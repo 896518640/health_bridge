@@ -1,0 +1,81 @@
+group = "com.dnurse.health.plugin.dnurse_health_plugin"
+version = "1.0-SNAPSHOT"
+
+buildscript {
+    ext.kotlin_version = "1.7.10"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.3.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+apply plugin: "kotlin-parcelize"
+
+android {
+    if (project.android.hasProperty("namespace")) {
+        namespace = "com.dnurse.health.plugin.dnurse_health_plugin"
+    }
+
+    compileSdk = 34
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+    }
+
+    defaultConfig {
+        minSdk = 29  // 三星健康SDK要求最低API 29
+    }
+
+    dependencies {
+        // Samsung Health SDK - 使用compileOnly JAR避免AAR打包问题
+        compileOnly files("libs/samsung-health-data-api-1.0.0.jar")
+        
+        // 必要的Android依赖
+        implementation "androidx.core:core-ktx:1.9.0"
+        implementation "androidx.appcompat:appcompat:1.6.1"
+        
+        // Kotlin协程支持
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4"
+        
+        // 测试依赖
+        testImplementation("org.jetbrains.kotlin:kotlin-test")
+        testImplementation("org.mockito:mockito-core:5.0.0")
+    }
+
+    testOptions {
+        unitTests.all {
+            useJUnitPlatform()
+
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
+}
