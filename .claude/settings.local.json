@@ -13,7 +13,8 @@
       "Bash(gh repo rename:*)",
       "Bash(git remote set-url:*)",
       "Bash(mkdir:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(./gradlew:*)"
     ],
     "deny": [],
     "ask": [],
