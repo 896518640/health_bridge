@@ -29,7 +29,7 @@ private struct HealthDataTypes {
 private struct HealthManagerConfig {
     static let maxQueryTimeout: TimeInterval = 30
     static let defaultQueryLimit = 1000
-    static let appSource = "DNurse App"
+    static let appSource = "Health Bridge App"
 }
 
 class AppleHealthManager {
