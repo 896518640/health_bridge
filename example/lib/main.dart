@@ -31,12 +31,12 @@ class HealthBridgeDemo extends StatefulWidget {
 }
 
 class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
-  String _platformVersion = 'Unknown';
+  String _platformVersion = '未知';
   List<HealthPlatform> _availablePlatforms = [];
   HealthPlatform? _selectedPlatform;
-  String _initStatus = 'Not initialized';
-  String _stepsData = 'No steps data';
-  String _dateStepsData = 'No date steps data';
+  String _initStatus = '未初始化';
+  String _stepsData = '无步数数据';
+  String _dateStepsData = '无日期步数数据';
   DateTime _selectedDate = DateTime.now();
 
   @override
@@ -51,10 +51,10 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
     List<HealthPlatform> platforms = [];
     
     try {
-      platformVersion = await HealthBridge.getPlatformVersion() ?? 'Unknown platform version';
+      platformVersion = await HealthBridge.getPlatformVersion() ?? '未知平台版本';
       platforms = await HealthBridge.getAvailableHealthPlatforms();
     } on PlatformException {
-      platformVersion = 'Failed to get platform version.';
+      platformVersion = '获取平台版本失败';
     }
 
     if (!mounted) return;
@@ -75,14 +75,14 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
       final result = await HealthBridge.initializeHealthPlatform(_selectedPlatform!);
       setState(() {
         if (result.isSuccess) {
-          _initStatus = 'Platform ${_selectedPlatform!.displayName} initialized successfully';
+          _initStatus = '平台 ${_selectedPlatform!.displayName} 初始化成功';
         } else {
-          _initStatus = result.message ?? 'Failed to initialize platform';
+          _initStatus = result.message ?? '初始化平台失败';
         }
       });
     } on PlatformException catch (e) {
       setState(() {
-        _initStatus = 'Failed to initialize: ${e.message}';
+        _initStatus = '初始化失败: ${e.message}';
       });
     }
   }
@@ -95,18 +95,18 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
       setState(() {
         if (result.isSuccess) {
           final totalSteps = result.totalCount ?? 0;
-          _stepsData = 'Today\'s steps: $totalSteps';
+          _stepsData = '今日步数: $totalSteps 步';
           print('Debug: totalCount = ${result.totalCount}, type = ${result.totalCount.runtimeType}');
           print('Debug: totalCount.toString() = ${result.totalCount.toString()}');
           print('Debug: as int = ${result.totalCount}');
           print('Debug: data = ${result.data}');
         } else {
-          _stepsData = result.message ?? 'Failed to get steps data';
+          _stepsData = result.message ?? '获取步数数据失败';
         }
       });
     } on PlatformException catch (e) {
       setState(() {
-        _stepsData = 'Failed to get steps: ${e.message}';
+        _stepsData = '获取步数失败: ${e.message}';
       });
     }
   }
@@ -123,15 +123,15 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
         if (result.isSuccess) {
           final totalSteps = result.totalCount ?? 0;
           final dateStr = _selectedDate.toString().split(' ')[0]; // 只显示日期部分
-          _dateStepsData = 'Steps on $dateStr: $totalSteps';
+          _dateStepsData = '$dateStr 的步数: $totalSteps 步';
           print('Debug date: totalCount = ${result.totalCount}, data = ${result.data}');
         } else {
-          _dateStepsData = result.message ?? 'Failed to get steps data for selected date';
+          _dateStepsData = result.message ?? '获取所选日期的步数数据失败';
         }
       });
     } on PlatformException catch (e) {
       setState(() {
-        _dateStepsData = 'Failed to get steps for date: ${e.message}';
+        _dateStepsData = '获取日期步数失败: ${e.message}';
       });
     }
   }
@@ -157,7 +157,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          title: const Text('Health Bridge Demo'),
+          title: const Text('健康桥梁 演示'),
           backgroundColor: Colors.blue[600],
         ),
         body: SingleChildScrollView(
@@ -172,13 +172,13 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Platform Info',
+                        '平台信息',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 8),
-                      Text('Running on: $_platformVersion'),
+                      Text('运行在: $_platformVersion'),
                       const SizedBox(height: 8),
-                      Text('Available platforms: ${_availablePlatforms.map((p) => p.displayName).join(', ')}'),
+                      Text('可用平台: ${_availablePlatforms.map((p) => p.displayName).join(', ')}'),
                     ],
                   ),
                 ),
@@ -192,7 +192,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Health Platform Setup',
+                          '健康平台设置',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 8),
@@ -216,7 +216,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                         const SizedBox(height: 8),
                         ElevatedButton(
                           onPressed: _selectedPlatform != null ? _initializeHealthPlatform : null,
-                          child: const Text('Initialize Selected Platform'),
+                          child: const Text('初始化所选平台'),
                         ),
                       ],
                     ),
@@ -230,7 +230,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Steps Data',
+                          '步数数据',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 8),
@@ -238,7 +238,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                         const SizedBox(height: 8),
                         ElevatedButton(
                           onPressed: _selectedPlatform != null ? _getTodaySteps : null,
-                          child: const Text('Get Today\'s Steps'),
+                          child: const Text('获取今日步数'),
                         ),
                       ],
                     ),
@@ -252,7 +252,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Steps for Specific Date',
+                          '指定日期的步数',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 8),
@@ -269,7 +269,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                             Expanded(
                               child: ElevatedButton(
                                 onPressed: _selectedPlatform != null ? _getStepsForDate : null,
-                                child: const Text('Get Steps'),
+                                child: const Text('获取步数'),
                               ),
                             ),
                           ],
