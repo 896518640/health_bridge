@@ -1,12 +1,12 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:dnurse_health_plugin/dnurse_health_plugin_method_channel.dart';
+import 'package:health_bridge/src/health_bridge_method_channel.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  MethodChannelDnurseHealthPlugin platform = MethodChannelDnurseHealthPlugin();
-  const MethodChannel channel = MethodChannel('dnurse_health_plugin');
+  MethodChannelHealthBridge platform = MethodChannelHealthBridge();
+  const MethodChannel channel = MethodChannel('health_bridge');
 
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
