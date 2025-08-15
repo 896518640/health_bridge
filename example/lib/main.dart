@@ -8,14 +8,29 @@ void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Health Bridge Demo',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: const HealthBridgeDemo(),
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
+class HealthBridgeDemo extends StatefulWidget {
+  const HealthBridgeDemo({super.key});
+
+  @override
+  State<HealthBridgeDemo> createState() => _HealthBridgeDemoState();
+}
+
+class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
   String _platformVersion = 'Unknown';
   List<HealthPlatform> _availablePlatforms = [];
   HealthPlatform? _selectedPlatform;
@@ -79,8 +94,9 @@ class _MyAppState extends State<MyApp> {
       final result = await HealthBridge.readStepCount(platform: _selectedPlatform!);
       setState(() {
         if (result.isSuccess) {
-          final totalSteps = result.totalCount;
+          final totalSteps = result.totalCount ?? 0;
           _stepsData = 'Today\'s steps: $totalSteps';
+          print('Debug: totalCount = ${result.totalCount}, data = ${result.data}');
         } else {
           _stepsData = result.message ?? 'Failed to get steps data';
         }
@@ -102,9 +118,10 @@ class _MyAppState extends State<MyApp> {
       );
       setState(() {
         if (result.isSuccess) {
-          final totalSteps = result.totalCount;
+          final totalSteps = result.totalCount ?? 0;
           final dateStr = _selectedDate.toString().split(' ')[0]; // 只显示日期部分
           _dateStepsData = 'Steps on $dateStr: $totalSteps';
+          print('Debug date: totalCount = ${result.totalCount}, data = ${result.data}');
         } else {
           _dateStepsData = result.message ?? 'Failed to get steps data for selected date';
         }
@@ -135,8 +152,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           title: const Text('Health Bridge Demo'),
           backgroundColor: Colors.blue[600],
@@ -265,7 +281,6 @@ class _MyAppState extends State<MyApp> {
             ],
           ),
         ),
-      ),
     );
   }
 }
