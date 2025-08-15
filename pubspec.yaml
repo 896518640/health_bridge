@@ -1,7 +1,9 @@
 name: dnurse_health_plugin
-description: "A new Flutter project."
+description: "A Flutter plugin for integrating health data across different platforms, providing unified access to health and fitness information with Samsung Health and Apple HealthKit support."
 version: 0.0.1
-homepage:
+homepage: https://github.com/896518640/dnurse_health_plugin
+repository: https://github.com/896518640/dnurse_health_plugin
+issue_tracker: https://github.com/896518640/dnurse_health_plugin/issues
 
 environment:
   sdk: '>=3.4.1 <4.0.0'
