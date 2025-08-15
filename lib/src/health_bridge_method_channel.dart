@@ -216,8 +216,8 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
           platform: platform,
           data: dataList,
           message: result['message']?.toString(),
-          totalCount: (result['count'] as num?)?.toInt() ?? 
-                      (result['totalSteps'] as num?)?.toInt() ?? 
+          totalCount: (result['totalSteps'] as num?)?.toInt() ?? 
+                      (result['count'] as num?)?.toInt() ?? 
                       dataList.length,
         );
       } else {

@@ -314,7 +314,7 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 )
                             )
 
-                            result.success(mapOf(
+                            val responseMap = mapOf(
                                 "status" to "success",
                                 "platform" to platform,
                                 "data" to responseData,
@@ -323,7 +323,14 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 "isRealData" to stepData["isRealData"],
                                 "dataSource" to stepData["dataSource"],
                                 "debug" to stepData["debug"]
-                            ))
+                            )
+                            
+                            Log.d(TAG, "📤 发送给Flutter的数据:")
+                            Log.d(TAG, "   - totalSteps: $totalSteps")
+                            Log.d(TAG, "   - count: ${responseData.size}")
+                            Log.d(TAG, "   - responseData size: ${responseData.size}")
+                            
+                            result.success(responseMap)
                         } else {
                             Log.e(TAG, "❌ 步数读取失败")
                             
@@ -393,7 +400,7 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 )
                             )
 
-                            result.success(mapOf(
+                            val dateResponseMap = mapOf(
                                 "status" to "success",
                                 "platform" to platform,
                                 "data" to responseData,
@@ -402,7 +409,14 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 "date" to targetDate.toString(),
                                 "isRealData" to stepData["isRealData"],
                                 "dataSource" to stepData["dataSource"]
-                            ))
+                            )
+                            
+                            Log.d(TAG, "📤 发送给Flutter的日期数据:")
+                            Log.d(TAG, "   - totalSteps: $totalSteps")
+                            Log.d(TAG, "   - count: ${responseData.size}")
+                            Log.d(TAG, "   - date: $targetDate")
+                            
+                            result.success(dateResponseMap)
                         } else {
                             Log.e(TAG, "❌ 指定日期步数读取失败")
                             
