@@ -69,12 +69,50 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
   @override
   Future<HealthDataResult> readStepCount({
     required HealthPlatform platform,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     try {
-      final result = await methodChannel.invokeMethod(
-        'readStepCount',
-        {'platform': platform.key},
-      );
+      // 处理日期参数逻辑
+      final now = DateTime.now();
+      final effectiveStartDate = startDate ?? DateTime(now.year, now.month, now.day);
+      
+      DateTime effectiveEndDate;
+      if (endDate != null) {
+        effectiveEndDate = endDate;
+      } else if (startDate != null) {
+        // 如果只提供了startDate，读取该日的结束时间
+        effectiveEndDate = DateTime(startDate.year, startDate.month, startDate.day, 23, 59, 59, 999);
+      } else {
+        // 如果都没提供，读取今日的结束时间
+        effectiveEndDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      }
+
+      // 判断是单日查询还是范围查询
+      final isSameDay = effectiveStartDate.year == effectiveEndDate.year &&
+          effectiveStartDate.month == effectiveEndDate.month &&
+          effectiveStartDate.day == effectiveEndDate.day;
+
+      final Map<String, dynamic> arguments = {
+        'platform': platform.key,
+      };
+
+      String methodName;
+      if (startDate == null && endDate == null) {
+        // 今日查询
+        methodName = 'readStepCount';
+      } else if (isSameDay) {
+        // 单日查询
+        methodName = 'readStepCountForDate';
+        arguments['date'] = effectiveStartDate.millisecondsSinceEpoch;
+      } else {
+        // 范围查询
+        methodName = 'readStepCountForDateRange';
+        arguments['startDate'] = effectiveStartDate.millisecondsSinceEpoch;
+        arguments['endDate'] = effectiveEndDate.millisecondsSinceEpoch;
+      }
+
+      final result = await methodChannel.invokeMethod(methodName, arguments);
 
       if (result == null) {
         return HealthDataResult(
@@ -88,76 +126,6 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
       return _parseHealthDataResult(resultMap, platform);
     } catch (e) {
       debugPrint('Error reading step count: $e');
-      return HealthDataResult(
-        status: HealthDataStatus.error,
-        platform: platform,
-        message: e.toString(),
-      );
-    }
-  }
-
-  @override
-  Future<HealthDataResult> readStepCountForDate({
-    required DateTime date,
-    required HealthPlatform platform,
-  }) async {
-    try {
-      final result = await methodChannel.invokeMethod(
-        'readStepCountForDate',
-        {
-          'date': date.millisecondsSinceEpoch,
-          'platform': platform.key,
-        },
-      );
-
-      if (result == null) {
-        return HealthDataResult(
-          status: HealthDataStatus.error,
-          platform: platform,
-          data: [],
-        );
-      }
-
-      final resultMap = Map<String, dynamic>.from(result as Map);
-      return _parseHealthDataResult(resultMap, platform);
-    } catch (e) {
-      debugPrint('Error reading step count for date: $e');
-      return HealthDataResult(
-        status: HealthDataStatus.error,
-        platform: platform,
-        message: e.toString(),
-      );
-    }
-  }
-
-  @override
-  Future<HealthDataResult> readStepCountForDateRange({
-    required DateTime startDate,
-    required DateTime endDate,
-    required HealthPlatform platform,
-  }) async {
-    try {
-      final result = await methodChannel.invokeMethod(
-        'readStepCountForDateRange',
-        {
-          'startDate': startDate.millisecondsSinceEpoch,
-          'endDate': endDate.millisecondsSinceEpoch,
-          'platform': platform.key,
-        },
-      );
-
-      if (result == null) {
-        return HealthDataResult(
-          status: HealthDataStatus.error,
-          platform: platform,
-          data: [],
-        );
-      }
-
-      final resultMap = Map<String, dynamic>.from(result as Map);
-      return _parseHealthDataResult(resultMap, platform);
-    } catch (e) {
-      debugPrint('Error reading step count for date range: $e');
       return HealthDataResult(
         status: HealthDataStatus.error,
         platform: platform,

@@ -37,7 +37,10 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
   String _initStatus = '未初始化';
   String _stepsData = '无步数数据';
   String _dateStepsData = '无日期步数数据';
+  String _rangeStepsData = '无范围步数数据';
   DateTime _selectedDate = DateTime.now();
+  DateTime _rangeStartDate = DateTime.now().subtract(const Duration(days: 7));
+  DateTime _rangeEndDate = DateTime.now();
 
   @override
   void initState() {
@@ -91,6 +94,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
     if (_selectedPlatform == null) return;
     
     try {
+      // 使用新的统一API - 不提供日期参数，读取今日步数
       final result = await HealthBridge.readStepCount(platform: _selectedPlatform!);
       setState(() {
         if (result.isSuccess) {
@@ -111,9 +115,10 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
     if (_selectedPlatform == null) return;
     
     try {
-      final result = await HealthBridge.readStepCountForDate(
-        date: _selectedDate,
+      // 使用新的统一API - 提供startDate读取指定日期步数
+      final result = await HealthBridge.readStepCount(
         platform: _selectedPlatform!,
+        startDate: _selectedDate,
       );
       setState(() {
         if (result.isSuccess) {
@@ -143,6 +148,84 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
         _selectedDate = picked;
       });
       _getStepsForDate(); // 自动获取新选择日期的步数
+    }
+  }
+
+  Future<void> _getStepsForDateRange() async {
+    if (_selectedPlatform == null) return;
+    
+    try {
+      // 使用新的统一API - 提供startDate和endDate读取日期范围步数
+      final result = await HealthBridge.readStepCount(
+        platform: _selectedPlatform!,
+        startDate: _rangeStartDate,
+        endDate: _rangeEndDate,
+      );
+      setState(() {
+        if (result.isSuccess) {
+          final totalSteps = result.totalCount ?? 0;
+          final days = _rangeEndDate.difference(_rangeStartDate).inDays + 1;
+          final startStr = _rangeStartDate.toString().split(' ')[0];
+          final endStr = _rangeEndDate.toString().split(' ')[0];
+          _rangeStepsData = '$startStr 到 $endStr ($days天)\n总步数: $totalSteps 步\n平均: ${(totalSteps / days).round()} 步/天';
+        } else {
+          _rangeStepsData = result.message ?? '获取日期范围步数数据失败';
+        }
+      });
+    } on PlatformException catch (e) {
+      setState(() {
+        _rangeStepsData = '获取日期范围步数失败: ${e.message}';
+      });
+    }
+  }
+
+  Future<void> _selectDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: DateTimeRange(start: _rangeStartDate, end: _rangeEndDate),
+    );
+    if (picked != null) {
+      setState(() {
+        _rangeStartDate = picked.start;
+        _rangeEndDate = picked.end;
+      });
+      _getStepsForDateRange(); // 自动获取新选择日期范围的步数
+    }
+  }
+
+  Future<void> _disconnect() async {
+    try {
+      await HealthBridge.disconnect();
+      setState(() {
+        _initStatus = '已断开连接';
+        _stepsData = '无步数数据';
+        _dateStepsData = '无日期步数数据';
+        _rangeStepsData = '无范围步数数据';
+      });
+      
+      // 显示成功提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('已成功断开所有健康平台连接'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // 显示错误提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('断开连接失败: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -271,6 +354,70 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                         ),
                         const SizedBox(height: 8),
                         Text(_dateStepsData),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '日期范围步数',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _selectDateRange,
+                                icon: const Icon(Icons.date_range),
+                                label: Text(
+                                  '${_rangeStartDate.toString().split(' ')[0]} - ${_rangeEndDate.toString().split(' ')[0]}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _selectedPlatform != null ? _getStepsForDateRange : null,
+                                child: const Text('获取范围步数'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(_rangeStepsData),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '连接管理',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton.icon(
+                          onPressed: _disconnect,
+                          icon: const Icon(Icons.logout),
+                          label: const Text('断开所有健康平台连接'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red[400],
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
                       ],
                     ),
                   ),

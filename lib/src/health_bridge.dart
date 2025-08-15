@@ -31,45 +31,33 @@ class HealthBridge {
   /// 从指定健康平台读取步数数据
   /// 
   /// [platform] 数据源健康平台
-  /// 返回当天的步数统计数据
+  /// [startDate] 开始日期，为null时读取今日数据
+  /// [endDate] 结束日期，为null时读取startDate当日数据
+  /// 
+  /// 使用示例：
+  /// ```dart
+  /// // 读取今日步数
+  /// await HealthBridge.readStepCount(platform: platform);
+  /// 
+  /// // 读取指定日期步数
+  /// await HealthBridge.readStepCount(platform: platform, startDate: date);
+  /// 
+  /// // 读取日期范围步数
+  /// await HealthBridge.readStepCount(
+  ///   platform: platform, 
+  ///   startDate: startDate, 
+  ///   endDate: endDate
+  /// );
+  /// ```
   static Future<HealthDataResult> readStepCount({
     required HealthPlatform platform,
+    DateTime? startDate,
+    DateTime? endDate,
   }) {
     return HealthBridgePlatform.instance.readStepCount(
       platform: platform,
-    );
-  }
-
-  /// 从指定健康平台读取指定日期的步数数据
-  /// 
-  /// [date] 目标日期
-  /// [platform] 数据源健康平台
-  /// 返回该日期的步数统计数据
-  static Future<HealthDataResult> readStepCountForDate({
-    required DateTime date,
-    required HealthPlatform platform,
-  }) {
-    return HealthBridgePlatform.instance.readStepCountForDate(
-      date: date,
-      platform: platform,
-    );
-  }
-
-  /// 从指定健康平台读取指定日期范围的步数数据
-  /// 
-  /// [startDate] 开始日期
-  /// [endDate] 结束日期
-  /// [platform] 数据源健康平台
-  /// 返回该日期范围的步数统计数据
-  static Future<HealthDataResult> readStepCountForDateRange({
-    required DateTime startDate,
-    required DateTime endDate,
-    required HealthPlatform platform,
-  }) {
-    return HealthBridgePlatform.instance.readStepCountForDateRange(
       startDate: startDate,
       endDate: endDate,
-      platform: platform,
     );
   }
 

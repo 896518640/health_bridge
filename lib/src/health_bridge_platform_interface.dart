@@ -37,27 +37,21 @@ abstract class HealthBridgePlatform extends PlatformInterface {
   }
 
   /// 读取步数数据
+  /// 
+  /// [platform] 数据源健康平台
+  /// [startDate] 开始日期，为null时读取今日数据
+  /// [endDate] 结束日期，为null时读取startDate当日数据
+  /// 
+  /// 使用示例：
+  /// - readStepCount(platform: platform) // 读取今日
+  /// - readStepCount(platform: platform, startDate: date) // 读取指定日期
+  /// - readStepCount(platform: platform, startDate: start, endDate: end) // 读取日期范围
   Future<HealthDataResult> readStepCount({
     required HealthPlatform platform,
+    DateTime? startDate,
+    DateTime? endDate,
   }) {
     throw UnimplementedError('readStepCount() has not been implemented.');
-  }
-
-  /// 读取指定日期的步数数据
-  Future<HealthDataResult> readStepCountForDate({
-    required DateTime date,
-    required HealthPlatform platform,
-  }) {
-    throw UnimplementedError('readStepCountForDate() has not been implemented.');
-  }
-
-  /// 读取指定日期范围的步数数据
-  Future<HealthDataResult> readStepCountForDateRange({
-    required DateTime startDate,
-    required DateTime endDate,
-    required HealthPlatform platform,
-  }) {
-    throw UnimplementedError('readStepCountForDateRange() has not been implemented.');
   }
 
   /// 断开所有健康平台连接
