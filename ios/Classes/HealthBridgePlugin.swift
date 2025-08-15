@@ -13,8 +13,6 @@ private struct PluginConstants {
         static let insertGlucoseData = "insertGlucoseData"
         static let readDailyGlucoseData = "readDailyGlucoseData"
         static let readStepCount = "readStepCount"
-        static let readStepCountForDateRange = "readStepCountForDateRange"
-        static let readStepCountForDate = "readStepCountForDate"
         static let disconnect = "disconnect"
     }
     
@@ -106,13 +104,7 @@ public class HealthBridgePlugin: NSObject, FlutterPlugin {
             handleReadDailyGlucoseData(call: call, result: result)
             
         case PluginConstants.Methods.readStepCount:
-            handleReadStepCount(call: call, result: result)
-            
-        case PluginConstants.Methods.readStepCountForDateRange:
-            handleReadStepCountForDateRange(call: call, result: result)
-            
-        case PluginConstants.Methods.readStepCountForDate:
-            handleReadStepCountForDate(call: call, result: result)
+            handleReadStepCountUnified(call: call, result: result)
             
         case PluginConstants.Methods.disconnect:
             handleDisconnect(result: result)
@@ -243,23 +235,47 @@ private extension HealthBridgePlugin {
         }
     }
     
-    func handleReadStepCount(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let platform = extractPlatform(from: call.arguments, result: result) else { return }
+    func handleReadStepCountUnified(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result) else { return }
         
         guard platform == PluginConstants.appleHealthPlatform else {
             result(HealthResponse.failure(message: "Platform \(platform) is not supported", platform: platform))
             return
         }
         
-        HealthLogger.log("Reading today's step count")
+        let startDateMillis = arguments["startDate"] as? Double
+        let endDateMillis = arguments["endDate"] as? Double
         
+        // 根据参数判断查询类型
+        if startDateMillis == nil && endDateMillis == nil {
+            // 今日查询
+            HealthLogger.log("Reading today's step count")
+            handleTodayStepCount(result: result)
+        } else if let startMillis = startDateMillis, endDateMillis == nil {
+            // 指定日期查询
+            let targetDate = Date(timeIntervalSince1970: startMillis / 1000.0)
+            HealthLogger.log("Reading step count for date: \(targetDate)")
+            handleSpecificDateStepCount(date: targetDate, dateMillis: Int64(startMillis), result: result)
+        } else if let startMillis = startDateMillis, let endMillis = endDateMillis {
+            // 日期范围查询
+            let startDate = Date(timeIntervalSince1970: startMillis / 1000.0)
+            let endDate = Date(timeIntervalSince1970: endMillis / 1000.0)
+            HealthLogger.log("Reading step count for date range: \(startDate) to \(endDate)")
+            handleDateRangeStepCount(startDate: startDate, endDate: endDate, result: result)
+        } else {
+            result(HealthResponse.failure(message: "Invalid date parameters", platform: PluginConstants.appleHealthPlatform))
+        }
+    }
+    
+    private func handleTodayStepCount(result: @escaping FlutterResult) {
         appleHealthManager?.readTodayStepCount { stepData, error in
             if let error = error {
-                HealthLogger.log("Failed to read step count: \(error)", level: .error)
+                HealthLogger.log("Failed to read today's step count: \(error)", level: .error)
                 result(HealthResponse.failure(message: error, platform: PluginConstants.appleHealthPlatform))
             } else {
                 let totalSteps = stepData["totalSteps"] as? Int ?? 0
-                HealthLogger.log("Successfully read step count: \(totalSteps) steps")
+                HealthLogger.log("Successfully read today's step count: \(totalSteps) steps")
                 
                 let responseData = stepData["data"] as? [[String: Any]] ?? []
                 
@@ -276,53 +292,10 @@ private extension HealthBridgePlugin {
         }
     }
     
-    func handleReadStepCountForDateRange(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let arguments = call.arguments as? [String: Any],
-              let platform = extractPlatform(from: arguments, result: result),
-              let startDate = arguments["startDate"] as? Double,
-              let endDate = arguments["endDate"] as? Double else { return }
-        
-        guard platform == PluginConstants.appleHealthPlatform else {
-            result(HealthResponse.failure(message: "Platform \(platform) is not supported", platform: platform))
-            return
-        }
-        
-        let startDateTime = Date(timeIntervalSince1970: startDate / 1000.0)
-        let endDateTime = Date(timeIntervalSince1970: endDate / 1000.0)
-        
-        HealthLogger.log("Reading step count for date range: \(startDateTime) to \(endDateTime)")
-        
-        appleHealthManager?.getStepCount(startDate: startDateTime, endDate: endDateTime) { steps in
-            let totalSteps = Int(steps)
-            HealthLogger.log("Successfully read step count for date range: \(totalSteps) steps")
-            
-            let response = HealthResponse.success(data: [
-                "platform": PluginConstants.appleHealthPlatform,
-                "dataType": "steps",
-                "data": [],
-                "count": totalSteps,
-                "totalSteps": totalSteps
-            ])
-            result(response)
-        }
-    }
-    
-    func handleReadStepCountForDate(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let arguments = call.arguments as? [String: Any],
-              let platform = extractPlatform(from: arguments, result: result),
-              let dateMillis = arguments["date"] as? Double else { return }
-        
-        guard platform == PluginConstants.appleHealthPlatform else {
-            result(HealthResponse.failure(message: "Platform \(platform) is not supported", platform: platform))
-            return
-        }
-        
-        let targetDate = Date(timeIntervalSince1970: dateMillis / 1000.0)
+    private func handleSpecificDateStepCount(date: Date, dateMillis: Int64, result: @escaping FlutterResult) {
         let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: targetDate)
+        let startOfDay = calendar.startOfDay(for: date)
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        
-        HealthLogger.log("Reading step count for date: \(startOfDay)")
         
         appleHealthManager?.getStepCount(startDate: startOfDay, endDate: endOfDay) { steps in
             let totalSteps = Int(steps)
@@ -331,7 +304,7 @@ private extension HealthBridgePlugin {
             let responseData = [[
                 "type": "steps",
                 "value": Double(totalSteps),
-                "timestamp": Int64(dateMillis),
+                "timestamp": dateMillis,
                 "unit": "steps",
                 "platform": PluginConstants.appleHealthPlatform
             ]]
@@ -346,6 +319,23 @@ private extension HealthBridgePlugin {
             result(response)
         }
     }
+    
+    private func handleDateRangeStepCount(startDate: Date, endDate: Date, result: @escaping FlutterResult) {
+        appleHealthManager?.getStepCount(startDate: startDate, endDate: endDate) { steps in
+            let totalSteps = Int(steps)
+            HealthLogger.log("Successfully read step count for date range: \(totalSteps) steps")
+            
+            let response = HealthResponse.success(data: [
+                "status": "success",
+                "platform": PluginConstants.appleHealthPlatform,
+                "data": [],
+                "totalSteps": totalSteps,
+                "count": 1
+            ])
+            result(response)
+        }
+    }
+    
     
     func handleDisconnect(result: @escaping FlutterResult) {
         HealthLogger.log("Disconnecting from Apple Health")

@@ -97,22 +97,15 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
         'platform': platform.key,
       };
 
-      String methodName;
-      if (startDate == null && endDate == null) {
-        // 今日查询
-        methodName = 'readStepCount';
-      } else if (isSameDay) {
-        // 单日查询
-        methodName = 'readStepCountForDate';
-        arguments['date'] = effectiveStartDate.millisecondsSinceEpoch;
-      } else {
-        // 范围查询
-        methodName = 'readStepCountForDateRange';
+      // 统一使用 readStepCount 方法，通过参数区分不同场景
+      if (startDate != null) {
         arguments['startDate'] = effectiveStartDate.millisecondsSinceEpoch;
+      }
+      if (endDate != null && !isSameDay) {
         arguments['endDate'] = effectiveEndDate.millisecondsSinceEpoch;
       }
 
-      final result = await methodChannel.invokeMethod(methodName, arguments);
+      final result = await methodChannel.invokeMethod('readStepCount', arguments);
 
       if (result == null) {
         return HealthDataResult(

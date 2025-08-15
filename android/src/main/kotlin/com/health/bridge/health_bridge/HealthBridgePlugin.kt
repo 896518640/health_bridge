@@ -150,13 +150,7 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             }
 
             "readStepCount" -> {
-                readStepCount(call, result)
-            }
-            "readStepCountForDateRange" -> {
-                readStepCountForDateRange(call, result)
-            }
-            "readStepCountForDate" -> {
-                readStepCountForDate(call, result)
+                readStepCountUnified(call, result)
             }
             "disconnect" -> {
                 disconnect(result)
@@ -285,54 +279,40 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
 
 
-    // 读取当天步数
-    private fun readStepCount(call: MethodCall, result: Result) {
+    // 统一的步数读取方法
+    private fun readStepCountUnified(call: MethodCall, result: Result) {
         val platform = call.argument<String>("platform") ?: "samsung_health"
+        val startDateMillis = call.argument<Long>("startDate")
+        val endDateMillis = call.argument<Long>("endDate")
         
         coroutineScope.launch {
             try {
                 when (platform) {
                     "samsung_health" -> {
-                        Log.d(TAG, "🚀 开始读取Samsung Health步数数据...")
-                        
-                        // 使用真实的Samsung Health SDK API
-                        val stepData = readTodayStepCount()
-                        
-                        if (stepData != null) {
-                            val totalSteps = (stepData["steps"] as Long).toInt()
-                            
-                            Log.d(TAG, "✅ 步数读取成功: $totalSteps 步")
-                            
-                            // 构造返回数据，符合Flutter侧期望的格式
-                            val responseData = listOf(
-                                mapOf(
-                                    "type" to "steps",
-                                    "value" to totalSteps.toDouble(),
-                                    "timestamp" to stepData["timestamp"],
-                                    "unit" to "steps",
-                                    "platform" to platform
-                                )
-                            )
-
-                            result.success(mapOf(
-                                "status" to "success",
-                                "platform" to platform,
-                                "data" to responseData,
-                                "totalSteps" to totalSteps,
-                                "count" to responseData.size,
-                                "isRealData" to stepData["isRealData"],
-                                "dataSource" to stepData["dataSource"],
-                                "debug" to stepData["debug"]
-                            ))
-                        } else {
-                            Log.e(TAG, "❌ 步数读取失败")
-                            
-                            result.success(mapOf(
-                                "status" to "error",
-                                "platform" to platform,
-                                "message" to "Failed to read step count from Samsung Health",
-                                "errorType" to "samsung_health_error"
-                            ))
+                        when {
+                            // 情况1：都为null - 读取今日
+                            startDateMillis == null && endDateMillis == null -> {
+                                Log.d(TAG, "🚀 开始读取Samsung Health今日步数数据...")
+                                readTodayStepCountInternal(result, platform)
+                            }
+                            // 情况2：只有startDate - 读取指定日期
+                            startDateMillis != null && endDateMillis == null -> {
+                                Log.d(TAG, "🚀 开始读取Samsung Health指定日期步数数据...")
+                                readSpecificDateStepCountInternal(startDateMillis, result, platform)
+                            }
+                            // 情况3：有startDate和endDate - 读取日期范围
+                            startDateMillis != null && endDateMillis != null -> {
+                                Log.d(TAG, "🚀 开始读取Samsung Health日期范围步数数据...")
+                                readDateRangeStepCountInternal(startDateMillis, endDateMillis, result, platform)
+                            }
+                            else -> {
+                                result.success(mapOf(
+                                    "status" to "error",
+                                    "platform" to platform,
+                                    "message" to "Invalid date parameters",
+                                    "errorType" to "invalid_parameters"
+                                ))
+                            }
                         }
                     }
                     else -> {
@@ -355,181 +335,197 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         }
     }
 
-    // 读取指定日期的步数
-    private fun readStepCountForDate(call: MethodCall, result: Result) {
-        val dateMillis = call.argument<Long>("date") ?: System.currentTimeMillis()
-        val platform = call.argument<String>("platform") ?: "samsung_health"
-        
-        coroutineScope.launch {
-            try {
-                when (platform) {
-                    "samsung_health" -> {
-                        Log.d(TAG, "🚀 开始读取Samsung Health指定日期步数数据...")
-                        
-                        // 将时间戳转换为LocalDate
-                        val targetDate = Instant.ofEpochMilli(dateMillis)
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate()
-                        
-                        Log.d(TAG, "   - 目标日期: $targetDate")
-                        
-                        // 使用真实的Samsung Health SDK API
-                        val stepData = readStepCountForSpecificDate(targetDate)
-                        
-                        if (stepData != null) {
-                            val totalSteps = (stepData["steps"] as Long).toInt()
-                            
-                            Log.d(TAG, "✅ 指定日期步数读取成功: $totalSteps 步")
-                            
-                            // 构造返回数据，符合Flutter侧期望的格式
-                            val responseData = listOf(
-                                mapOf(
-                                    "type" to "steps",
-                                    "value" to totalSteps.toDouble(),
-                                    "timestamp" to dateMillis,
-                                    "unit" to "steps",
-                                    "platform" to platform,
-                                    "date" to targetDate.toString()
-                                )
-                            )
+    // 读取今日步数的内部实现
+    private suspend fun readTodayStepCountInternal(result: Result, platform: String) {
+        try {
+            // 使用真实的Samsung Health SDK API
+            val stepData = readTodayStepCount()
+            
+            if (stepData != null) {
+                val totalSteps = (stepData["steps"] as Long).toInt()
+                
+                Log.d(TAG, "✅ 今日步数读取成功: $totalSteps 步")
+                
+                // 构造返回数据，符合Flutter侧期望的格式
+                val responseData = listOf(
+                    mapOf(
+                        "type" to "steps",
+                        "value" to totalSteps.toDouble(),
+                        "timestamp" to stepData["timestamp"],
+                        "unit" to "steps",
+                        "platform" to platform
+                    )
+                )
 
-                            result.success(mapOf(
-                                "status" to "success",
-                                "platform" to platform,
-                                "data" to responseData,
-                                "totalSteps" to totalSteps,
-                                "count" to responseData.size,
-                                "date" to targetDate.toString(),
-                                "isRealData" to stepData["isRealData"],
-                                "dataSource" to stepData["dataSource"]
-                            ))
-                        } else {
-                            Log.e(TAG, "❌ 指定日期步数读取失败")
-                            
-                            result.success(mapOf(
-                                "status" to "error",
-                                "platform" to platform,
-                                "message" to "Failed to read step count for date: $targetDate",
-                                "errorType" to "samsung_health_error"
-                            ))
-                        }
-                    }
-                    else -> {
-                        result.success(mapOf(
-                            "status" to "platform_not_supported",
-                            "platform" to platform,
-                            "message" to "Platform $platform not supported"
-                        ))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ 读取指定日期步数异常: ${e.message}", e)
+                result.success(mapOf(
+                    "status" to "success",
+                    "platform" to platform,
+                    "data" to responseData,
+                    "totalSteps" to totalSteps,
+                    "count" to responseData.size,
+                    "isRealData" to stepData["isRealData"],
+                    "dataSource" to stepData["dataSource"]
+                ))
+            } else {
+                Log.e(TAG, "❌ 今日步数读取失败")
+                
                 result.success(mapOf(
                     "status" to "error",
                     "platform" to platform,
-                    "message" to e.message,
-                    "errorType" to "unexpected_error"
+                    "message" to "Failed to read today's step count from Samsung Health",
+                    "errorType" to "samsung_health_error"
                 ))
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 读取今日步数异常: ${e.message}", e)
+            result.success(mapOf(
+                "status" to "error",
+                "platform" to platform,
+                "message" to e.message,
+                "errorType" to "unexpected_error"
+            ))
         }
     }
 
-    // 读取指定日期范围的步数
-    private fun readStepCountForDateRange(call: MethodCall, result: Result) {
-        val startDateMillis = call.argument<Long>("startDate") ?: System.currentTimeMillis()
-        val endDateMillis = call.argument<Long>("endDate") ?: System.currentTimeMillis()
-        val platform = call.argument<String>("platform") ?: "samsung_health"
-        
-        coroutineScope.launch {
-            try {
-                when (platform) {
-                    "samsung_health" -> {
-                        Log.d(TAG, "🚀 开始读取Samsung Health日期范围步数数据...")
-                        
-                        // 将时间戳转换为LocalDate
-                        val startDate = Instant.ofEpochMilli(startDateMillis)
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate()
-                        val endDate = Instant.ofEpochMilli(endDateMillis)
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate()
-                        
-                        Log.d(TAG, "   - 日期范围: $startDate 到 $endDate")
-                        
-                        // 循环调用单日查询获取每日数据
-                        val dailyDataList = mutableListOf<Map<String, Any>>()
-                        var totalSteps = 0
-                        var currentDate = startDate
-                        
-                        while (!currentDate.isAfter(endDate)) {
-                            Log.d(TAG, "   - 正在读取日期: $currentDate")
-                            
-                            val dayStepData = readStepCountForSpecificDate(currentDate)
-                            
-                            if (dayStepData != null) {
-                                val daySteps = (dayStepData["steps"] as Long).toInt()
-                                totalSteps += daySteps
-                                
-                                // 添加该日的数据
-                                dailyDataList.add(mapOf(
-                                    "type" to "steps",
-                                    "value" to daySteps.toDouble(),
-                                    "timestamp" to currentDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                                    "unit" to "steps",
-                                    "platform" to platform,
-                                    "date" to currentDate.toString()
-                                ))
-                                
-                                Log.d(TAG, "   - $currentDate: $daySteps 步")
-                            } else {
-                                Log.w(TAG, "   - $currentDate: 数据读取失败")
-                                // 即使某一天失败，也添加0步数的记录
-                                dailyDataList.add(mapOf(
-                                    "type" to "steps",
-                                    "value" to 0.0,
-                                    "timestamp" to currentDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                                    "unit" to "steps",
-                                    "platform" to platform,
-                                    "date" to currentDate.toString()
-                                ))
-                            }
-                            
-                            currentDate = currentDate.plusDays(1)
-                        }
-                        
-                        Log.d(TAG, "✅ 日期范围步数读取完成: 总计 $totalSteps 步，共 ${dailyDataList.size} 天")
-                        
-                        result.success(mapOf(
-                            "status" to "success",
-                            "platform" to platform,
-                            "data" to dailyDataList,
-                            "totalSteps" to totalSteps,
-                            "count" to dailyDataList.size,
-                            "startDate" to startDate.toString(),
-                            "endDate" to endDate.toString(),
-                            "isRealData" to true,
-                            "dataSource" to "samsung_health_sdk_official"
-                        ))
-                    }
-                    else -> {
-                        result.success(mapOf(
-                            "status" to "platform_not_supported",
-                            "platform" to platform,
-                            "message" to "Platform $platform not supported"
-                        ))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ 读取日期范围步数异常: ${e.message}", e)
+    // 读取指定日期步数的内部实现
+    private suspend fun readSpecificDateStepCountInternal(dateMillis: Long, result: Result, platform: String) {
+        try {
+            // 将时间戳转换为LocalDate
+            val targetDate = Instant.ofEpochMilli(dateMillis)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+            
+            Log.d(TAG, "   - 目标日期: $targetDate")
+            
+            // 使用真实的Samsung Health SDK API
+            val stepData = readStepCountForSpecificDate(targetDate)
+            
+            if (stepData != null) {
+                val totalSteps = (stepData["steps"] as Long).toInt()
+                
+                Log.d(TAG, "✅ 指定日期步数读取成功: $totalSteps 步")
+                
+                // 构造返回数据，符合Flutter侧期望的格式
+                val responseData = listOf(
+                    mapOf(
+                        "type" to "steps",
+                        "value" to totalSteps.toDouble(),
+                        "timestamp" to dateMillis,
+                        "unit" to "steps",
+                        "platform" to platform,
+                        "date" to targetDate.toString()
+                    )
+                )
+
+                result.success(mapOf(
+                    "status" to "success",
+                    "platform" to platform,
+                    "data" to responseData,
+                    "totalSteps" to totalSteps,
+                    "count" to responseData.size,
+                    "date" to targetDate.toString(),
+                    "isRealData" to stepData["isRealData"],
+                    "dataSource" to stepData["dataSource"]
+                ))
+            } else {
+                Log.e(TAG, "❌ 指定日期步数读取失败")
+                
                 result.success(mapOf(
                     "status" to "error",
                     "platform" to platform,
-                    "message" to e.message,
-                    "errorType" to "unexpected_error"
+                    "message" to "Failed to read step count for date: $targetDate",
+                    "errorType" to "samsung_health_error"
                 ))
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 读取指定日期步数异常: ${e.message}", e)
+            result.success(mapOf(
+                "status" to "error",
+                "platform" to platform,
+                "message" to e.message,
+                "errorType" to "unexpected_error"
+            ))
         }
     }
+
+    // 读取日期范围步数的内部实现
+    private suspend fun readDateRangeStepCountInternal(startDateMillis: Long, endDateMillis: Long, result: Result, platform: String) {
+        try {
+            // 将时间戳转换为LocalDate
+            val startDate = Instant.ofEpochMilli(startDateMillis)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+            val endDate = Instant.ofEpochMilli(endDateMillis)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+            
+            Log.d(TAG, "   - 日期范围: $startDate 到 $endDate")
+            
+            // 循环调用单日查询获取每日数据
+            val dailyDataList = mutableListOf<Map<String, Any>>()
+            var totalSteps = 0
+            var currentDate = startDate
+            
+            while (!currentDate.isAfter(endDate)) {
+                Log.d(TAG, "   - 正在读取日期: $currentDate")
+                
+                val dayStepData = readStepCountForSpecificDate(currentDate)
+                
+                if (dayStepData != null) {
+                    val daySteps = (dayStepData["steps"] as Long).toInt()
+                    totalSteps += daySteps
+                    
+                    // 添加该日的数据
+                    dailyDataList.add(mapOf(
+                        "type" to "steps",
+                        "value" to daySteps.toDouble(),
+                        "timestamp" to currentDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                        "unit" to "steps",
+                        "platform" to platform,
+                        "date" to currentDate.toString()
+                    ))
+                    
+                    Log.d(TAG, "   - $currentDate: $daySteps 步")
+                } else {
+                    Log.w(TAG, "   - $currentDate: 数据读取失败")
+                    // 即使某一天失败，也添加0步数的记录
+                    dailyDataList.add(mapOf(
+                        "type" to "steps",
+                        "value" to 0.0,
+                        "timestamp" to currentDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                        "unit" to "steps",
+                        "platform" to platform,
+                        "date" to currentDate.toString()
+                    ))
+                }
+                
+                currentDate = currentDate.plusDays(1)
+            }
+            
+            Log.d(TAG, "✅ 日期范围步数读取完成: 总计 $totalSteps 步，共 ${dailyDataList.size} 天")
+            
+            result.success(mapOf(
+                "status" to "success",
+                "platform" to platform,
+                "data" to dailyDataList,
+                "totalSteps" to totalSteps,
+                "count" to dailyDataList.size,
+                "startDate" to startDate.toString(),
+                "endDate" to endDate.toString(),
+                "isRealData" to true,
+                "dataSource" to "samsung_health_sdk_official"
+            ))
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 读取日期范围步数异常: ${e.message}", e)
+            result.success(mapOf(
+                "status" to "error",
+                "platform" to platform,
+                "message" to e.message,
+                "errorType" to "unexpected_error"
+            ))
+        }
+    }
+
 
     // 断开连接
     private fun disconnect(result: Result) {

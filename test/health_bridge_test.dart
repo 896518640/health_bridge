@@ -25,7 +25,7 @@ class MockHealthBridgePlatform
       ));
 
   @override
-  Future<HealthDataResult> readStepCount({required HealthPlatform platform}) =>
+  Future<HealthDataResult> readStepCount({required HealthPlatform platform, DateTime? startDate, DateTime? endDate}) =>
       Future.value(HealthDataResult(
         status: HealthDataStatus.success,
         platform: platform,
