@@ -1,10 +1,10 @@
 import Flutter
 import UIKit
 
-public class DnurseHealthPlugin: NSObject, FlutterPlugin {
+public class HealthBridgePlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "dnurse_health_plugin", binaryMessenger: registrar.messenger())
-    let instance = DnurseHealthPlugin()
+    let channel = FlutterMethodChannel(name: "health_bridge", binaryMessenger: registrar.messenger())
+    let instance = HealthBridgePlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
 

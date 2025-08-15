@@ -1,15 +1,15 @@
 #
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
-# Run `pod lib lint dnurse_health_plugin.podspec` to validate before publishing.
+# Run `pod lib lint health_bridge.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
-  s.name             = 'dnurse_health_plugin'
+  s.name             = 'health_bridge'
   s.version          = '0.0.1'
-  s.summary          = 'A new Flutter project.'
+  s.summary          = 'A Flutter plugin that bridges health data across different platforms.'
   s.description      = <<-DESC
-A new Flutter project.
+A Flutter plugin that bridges health data across different platforms, providing unified access to health and fitness information with Samsung Health and Apple HealthKit support.
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://github.com/896518640/health_bridge'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Your Company' => 'email@example.com' }
   s.source           = { :path => '.' }

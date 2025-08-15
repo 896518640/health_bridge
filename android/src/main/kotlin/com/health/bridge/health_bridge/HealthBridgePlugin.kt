@@ -1,4 +1,4 @@
-package com.dnurse.health.plugin.dnurse_health_plugin
+package com.health.bridge.health_bridge
 
 import android.app.Activity
 import android.content.Context
@@ -47,8 +47,8 @@ import com.samsung.android.sdk.health.data.data.AggregateOperation
 // response 相关导入
 import com.samsung.android.sdk.health.data.response.DataResponse
 
-/** DnurseHealthPlugin */
-class DnurseHealthPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
+/** HealthBridgePlugin */
+class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
     private var activity: Activity? = null
@@ -61,7 +61,7 @@ class DnurseHealthPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     private var hasPermissions = false
     
     companion object {
-        private const val TAG = "DnurseHealthPlugin"
+        private const val TAG = "HealthBridgePlugin"
         private const val SAMSUNG_HEALTH_PACKAGE = "com.sec.android.app.shealth"
         private const val MIN_SAMSUNG_HEALTH_VERSION = 6300000 // Samsung Health 6.30+
         
@@ -71,7 +71,7 @@ class DnurseHealthPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-    channel = MethodChannel(flutterPluginBinding.binaryMessenger, "dnurse_health_plugin")
+    channel = MethodChannel(flutterPluginBinding.binaryMessenger, "health_bridge")
     channel.setMethodCallHandler(this)
         context = flutterPluginBinding.applicationContext
         initializeSamsungHealth()
@@ -281,7 +281,6 @@ class DnurseHealthPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             }
         }
     }
-
 
 
 
