@@ -211,14 +211,23 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
           }
         }
 
+        final totalStepsValue = result['totalSteps'];
+        final countValue = result['count'];
+        final calculatedTotalCount = (result['totalSteps'] as num?)?.toInt() ?? 
+                      (result['count'] as num?)?.toInt() ?? 
+                      dataList.length;
+        
+        print('🔍 Flutter端method channel数据解析:');
+        print('   - result[\'totalSteps\']: $totalStepsValue (${totalStepsValue.runtimeType})');
+        print('   - result[\'count\']: $countValue (${countValue.runtimeType})');
+        print('   - calculatedTotalCount: $calculatedTotalCount (${calculatedTotalCount.runtimeType})');
+        
         return HealthDataResult(
           status: HealthDataStatus.success,
           platform: platform,
           data: dataList,
           message: result['message']?.toString(),
-          totalCount: (result['totalSteps'] as num?)?.toInt() ?? 
-                      (result['count'] as num?)?.toInt() ?? 
-                      dataList.length,
+          totalCount: calculatedTotalCount,
         );
       } else {
         // 处理错误状态

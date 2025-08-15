@@ -157,7 +157,7 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          title: const Text('健康桥梁 演示'),
+          title: const Text('Health Bridge Demo'),
           backgroundColor: Colors.blue[600],
         ),
         body: SingleChildScrollView(
