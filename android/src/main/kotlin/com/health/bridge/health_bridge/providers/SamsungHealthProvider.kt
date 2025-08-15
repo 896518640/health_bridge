@@ -22,13 +22,15 @@ import com.samsung.android.sdk.health.data.request.LocalTimeFilter
 import com.samsung.android.sdk.health.data.request.LocalTimeGroup
 import com.samsung.android.sdk.health.data.request.LocalTimeGroupUnit
 import com.samsung.android.sdk.health.data.response.DataResponse
+import kotlinx.coroutines.delay
 
 /**
  * Samsung Health数据提供者实现
  * 负责Samsung Health SDK的具体集成
  */
 class SamsungHealthProvider(
-    private val context: Context
+    private val context: Context,
+    private var activity: Activity? = null
 ) : HealthDataProvider {
     
     override val platformKey = "samsung_health"
@@ -65,16 +67,27 @@ class SamsungHealthProvider(
             
             healthDataStore = HealthDataService.getStore(context)
             
-            // TODO: 请求权限的逻辑需要Activity实例
-            // 这里需要重构权限请求机制
-            hasPermissions = true // 临时设置
+            // 请求权限
+            if (activity != null) {
+                hasPermissions = checkAndRequestPermissions(activity!!)
+            } else {
+                Log.w(TAG, "Activity is null, cannot request permissions")
+                hasPermissions = false
+            }
             
-            Log.d(TAG, "Samsung Health initialized successfully")
-            true
+            Log.d(TAG, "Samsung Health initialized successfully, hasPermissions: $hasPermissions")
+            hasPermissions
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Samsung Health", e)
             false
         }
+    }
+    
+    /**
+     * 设置Activity实例
+     */
+    fun setActivity(activity: Activity?) {
+        this.activity = activity
     }
     
     override suspend fun readTodayStepCount(): StepCountResult? {
@@ -165,5 +178,61 @@ class SamsungHealthProvider(
         ).build()
         
         return store.aggregateDataAsync(stepsRequest).get()
+    }
+    
+    /**
+     * 检查和请求权限 - 恢复原始逻辑
+     */
+    private suspend fun checkAndRequestPermissions(activity: Activity): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "🔐 开始检查和请求Samsung Health权限...")
+            
+            val store = healthDataStore ?: run {
+                Log.e(TAG, "❌ HealthDataStore为null，无法进行权限检查")
+                return@withContext false
+            }
+            
+            // 创建所需权限集合
+            val requiredPermissions = setOf(
+                Permission.of(DataTypes.STEPS, AccessType.READ)
+            )
+            
+            Log.d(TAG, "📋 检查当前权限状态...")
+            Log.d(TAG, "   - 必需权限数量: ${requiredPermissions.size}")
+            
+            // 检查当前已授予的权限
+            val grantedPermissions = store.getGrantedPermissions(requiredPermissions)
+            Log.d(TAG, "📊 当前已授予权限数量: ${grantedPermissions.size}/${requiredPermissions.size}")
+            
+            if (grantedPermissions.containsAll(requiredPermissions)) {
+                Log.d(TAG, "✅ 所有必需权限已授予")
+                return@withContext true
+            }
+            
+            // 申请缺失的权限
+            Log.d(TAG, "🚨 发现缺失权限，开始申请...")
+            val missingPermissions = requiredPermissions - grantedPermissions
+            Log.d(TAG, "   - 缺失权限数量: ${missingPermissions.size}")
+            
+            // 申请权限 - 会弹出Samsung Health权限对话框
+            Log.d(TAG, "📱 发起权限申请对话框...")
+            store.requestPermissions(requiredPermissions, activity)
+            
+            // 等待用户操作后重新检查权限
+            Log.d(TAG, "⏳ 等待用户授权操作...")
+            delay(1500) // 给用户足够时间操作
+            
+            val finalPermissions = store.getGrantedPermissions(requiredPermissions)
+            val allGranted = finalPermissions.containsAll(requiredPermissions)
+            
+            Log.d(TAG, "📈 权限申请后检查: ${finalPermissions.size}/${requiredPermissions.size}")
+            Log.d(TAG, if (allGranted) "✅ 权限申请成功" else "⚠️ 权限申请被拒绝或部分授予")
+            
+            return@withContext allGranted
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 权限检查/申请失败: ${e.message}", e)
+            return@withContext false
+        }
     }
 }

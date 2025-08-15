@@ -1,5 +1,6 @@
 package com.health.bridge.health_bridge.services
 
+import android.app.Activity
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.withContext
@@ -21,9 +22,24 @@ class HealthBridgeService(context: Context) {
     
     private val providerFactory = HealthProviderFactory(context)
     private val activeProviders = mutableMapOf<String, HealthDataProvider>()
+    private var activity: Activity? = null
     
     companion object {
         private const val TAG = "HealthBridgeService"
+    }
+    
+    /**
+     * 设置Activity实例
+     */
+    fun setActivity(activity: Activity?) {
+        this.activity = activity
+        providerFactory.setActivity(activity)
+        // 更新已存在的提供者
+        activeProviders.values.forEach { provider ->
+            if (provider is com.health.bridge.health_bridge.providers.SamsungHealthProvider) {
+                provider.setActivity(activity)
+            }
+        }
     }
     
     /**
@@ -138,6 +154,8 @@ class HealthBridgeService(context: Context) {
      */
     private fun getOrCreateProvider(platform: String): HealthDataProvider? {
         return activeProviders[platform] ?: run {
+            // 确保factory有最新的Activity
+            providerFactory.setActivity(activity)
             val provider = providerFactory.createProvider(platform)
             provider?.let {
                 activeProviders[platform] = it

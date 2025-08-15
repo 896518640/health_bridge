@@ -143,17 +143,21 @@ class HealthBridgePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     // ActivityAware 实现
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
+        healthBridgeService.setActivity(activity)
     }
     
     override fun onDetachedFromActivityForConfigChanges() {
         activity = null
+        healthBridgeService.setActivity(null)
     }
     
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
+        healthBridgeService.setActivity(activity)
     }
     
     override fun onDetachedFromActivity() {
         activity = null
+        healthBridgeService.setActivity(null)
     }
 }
