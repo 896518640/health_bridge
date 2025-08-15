@@ -96,10 +96,6 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
         if (result.isSuccess) {
           final totalSteps = result.totalCount ?? 0;
           _stepsData = '今日步数: $totalSteps 步';
-          print('Debug: totalCount = ${result.totalCount}, type = ${result.totalCount.runtimeType}');
-          print('Debug: totalCount.toString() = ${result.totalCount.toString()}');
-          print('Debug: as int = ${result.totalCount}');
-          print('Debug: data = ${result.data}');
         } else {
           _stepsData = result.message ?? '获取步数数据失败';
         }
@@ -124,7 +120,6 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
           final totalSteps = result.totalCount ?? 0;
           final dateStr = _selectedDate.toString().split(' ')[0]; // 只显示日期部分
           _dateStepsData = '$dateStr 的步数: $totalSteps 步';
-          print('Debug date: totalCount = ${result.totalCount}, data = ${result.data}');
         } else {
           _dateStepsData = result.message ?? '获取所选日期的步数数据失败';
         }

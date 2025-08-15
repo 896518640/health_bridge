@@ -299,23 +299,9 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                         val stepData = readTodayStepCount()
                         
                         if (stepData != null) {
-                            val stepsValue = stepData["steps"]
-                            Log.d(TAG, "🔍 检查步数数据类型:")
-                            Log.d(TAG, "   - stepsValue: $stepsValue")
-                            Log.d(TAG, "   - stepsValue.javaClass: ${stepsValue?.javaClass}")
-                            
-                            val totalSteps = when (stepsValue) {
-                                is Long -> stepsValue.toInt()
-                                is Int -> stepsValue
-                                is Number -> stepsValue.toInt()
-                                else -> {
-                                    Log.w(TAG, "⚠️ 未知的步数数据类型: ${stepsValue?.javaClass}")
-                                    0
-                                }
-                            }
+                            val totalSteps = (stepData["steps"] as Long).toInt()
                             
                             Log.d(TAG, "✅ 步数读取成功: $totalSteps 步")
-                            Log.d(TAG, "   - totalSteps类型: ${totalSteps.javaClass}")
                             
                             // 构造返回数据，符合Flutter侧期望的格式
                             val responseData = listOf(
@@ -328,7 +314,7 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 )
                             )
 
-                            val responseMap = mapOf(
+                            result.success(mapOf(
                                 "status" to "success",
                                 "platform" to platform,
                                 "data" to responseData,
@@ -337,14 +323,7 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 "isRealData" to stepData["isRealData"],
                                 "dataSource" to stepData["dataSource"],
                                 "debug" to stepData["debug"]
-                            )
-                            
-                            Log.d(TAG, "📤 发送给Flutter的数据:")
-                            Log.d(TAG, "   - totalSteps: $totalSteps")
-                            Log.d(TAG, "   - count: ${responseData.size}")
-                            Log.d(TAG, "   - responseData size: ${responseData.size}")
-                            
-                            result.success(responseMap)
+                            ))
                         } else {
                             Log.e(TAG, "❌ 步数读取失败")
                             
@@ -398,23 +377,9 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                         val stepData = readStepCountForSpecificDate(targetDate)
                         
                         if (stepData != null) {
-                            val stepsValue = stepData["steps"]
-                            Log.d(TAG, "🔍 检查日期步数数据类型:")
-                            Log.d(TAG, "   - stepsValue: $stepsValue")
-                            Log.d(TAG, "   - stepsValue.javaClass: ${stepsValue?.javaClass}")
-                            
-                            val totalSteps = when (stepsValue) {
-                                is Long -> stepsValue.toInt()
-                                is Int -> stepsValue
-                                is Number -> stepsValue.toInt()
-                                else -> {
-                                    Log.w(TAG, "⚠️ 未知的日期步数数据类型: ${stepsValue?.javaClass}")
-                                    0
-                                }
-                            }
+                            val totalSteps = (stepData["steps"] as Long).toInt()
                             
                             Log.d(TAG, "✅ 指定日期步数读取成功: $totalSteps 步")
-                            Log.d(TAG, "   - totalSteps类型: ${totalSteps.javaClass}")
                             
                             // 构造返回数据，符合Flutter侧期望的格式
                             val responseData = listOf(
@@ -428,7 +393,7 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 )
                             )
 
-                            val dateResponseMap = mapOf(
+                            result.success(mapOf(
                                 "status" to "success",
                                 "platform" to platform,
                                 "data" to responseData,
@@ -437,14 +402,7 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                                 "date" to targetDate.toString(),
                                 "isRealData" to stepData["isRealData"],
                                 "dataSource" to stepData["dataSource"]
-                            )
-                            
-                            Log.d(TAG, "📤 发送给Flutter的日期数据:")
-                            Log.d(TAG, "   - totalSteps: $totalSteps")
-                            Log.d(TAG, "   - count: ${responseData.size}")
-                            Log.d(TAG, "   - date: $targetDate")
-                            
-                            result.success(dateResponseMap)
+                            ))
                         } else {
                             Log.e(TAG, "❌ 指定日期步数读取失败")
                             
