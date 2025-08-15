@@ -96,7 +96,10 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
         if (result.isSuccess) {
           final totalSteps = result.totalCount ?? 0;
           _stepsData = 'Today\'s steps: $totalSteps';
-          print('Debug: totalCount = ${result.totalCount}, data = ${result.data}');
+          print('Debug: totalCount = ${result.totalCount}, type = ${result.totalCount.runtimeType}');
+          print('Debug: totalCount.toString() = ${result.totalCount.toString()}');
+          print('Debug: as int = ${result.totalCount}');
+          print('Debug: data = ${result.data}');
         } else {
           _stepsData = result.message ?? 'Failed to get steps data';
         }

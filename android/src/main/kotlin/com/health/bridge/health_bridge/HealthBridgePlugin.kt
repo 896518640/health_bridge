@@ -299,9 +299,23 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                         val stepData = readTodayStepCount()
                         
                         if (stepData != null) {
-                            val totalSteps = (stepData["steps"] as Long).toInt()
+                            val stepsValue = stepData["steps"]
+                            Log.d(TAG, "🔍 检查步数数据类型:")
+                            Log.d(TAG, "   - stepsValue: $stepsValue")
+                            Log.d(TAG, "   - stepsValue.javaClass: ${stepsValue?.javaClass}")
+                            
+                            val totalSteps = when (stepsValue) {
+                                is Long -> stepsValue.toInt()
+                                is Int -> stepsValue
+                                is Number -> stepsValue.toInt()
+                                else -> {
+                                    Log.w(TAG, "⚠️ 未知的步数数据类型: ${stepsValue?.javaClass}")
+                                    0
+                                }
+                            }
                             
                             Log.d(TAG, "✅ 步数读取成功: $totalSteps 步")
+                            Log.d(TAG, "   - totalSteps类型: ${totalSteps.javaClass}")
                             
                             // 构造返回数据，符合Flutter侧期望的格式
                             val responseData = listOf(
@@ -384,9 +398,23 @@ class HealthBridgePlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                         val stepData = readStepCountForSpecificDate(targetDate)
                         
                         if (stepData != null) {
-                            val totalSteps = (stepData["steps"] as Long).toInt()
+                            val stepsValue = stepData["steps"]
+                            Log.d(TAG, "🔍 检查日期步数数据类型:")
+                            Log.d(TAG, "   - stepsValue: $stepsValue")
+                            Log.d(TAG, "   - stepsValue.javaClass: ${stepsValue?.javaClass}")
+                            
+                            val totalSteps = when (stepsValue) {
+                                is Long -> stepsValue.toInt()
+                                is Int -> stepsValue
+                                is Number -> stepsValue.toInt()
+                                else -> {
+                                    Log.w(TAG, "⚠️ 未知的日期步数数据类型: ${stepsValue?.javaClass}")
+                                    0
+                                }
+                            }
                             
                             Log.d(TAG, "✅ 指定日期步数读取成功: $totalSteps 步")
+                            Log.d(TAG, "   - totalSteps类型: ${totalSteps.javaClass}")
                             
                             // 构造返回数据，符合Flutter侧期望的格式
                             val responseData = listOf(
