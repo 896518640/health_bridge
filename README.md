@@ -1,4 +1,4 @@
-# DNurse Health Plugin
+# Health Bridge
 
 A Flutter plugin for integrating health data across different platforms, providing unified access to health and fitness information.
 
@@ -25,7 +25,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  dnurse_health_plugin: ^0.0.1
+  health_bridge: ^0.0.1
 ```
 
 Then run:
@@ -72,10 +72,10 @@ android {
 ## Usage
 
 ```dart
-import 'package:dnurse_health_plugin/dnurse_health_plugin.dart';
+import 'package:health_bridge/health_bridge.dart';
 
 // Initialize the plugin
-final healthPlugin = DnurseHealthPlugin();
+final healthPlugin = HealthBridge();
 
 // Request permissions
 await healthPlugin.requestPermissions();
@@ -114,5 +114,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-For questions and support, please open an issue on [GitHub](https://github.com/896518640/dnurse_health_plugin/issues).
+For questions and support, please open an issue on [GitHub](https://github.com/896518640/health_bridge/issues).
 

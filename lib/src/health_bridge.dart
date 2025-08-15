@@ -1,19 +1,19 @@
-import 'dnurse_health_plugin_platform_interface.dart';
+import 'health_bridge_platform_interface.dart';
 import 'models/health_data.dart';
 import 'models/health_platform.dart';
 
-/// DnurseHealthPlugin的主类，提供多平台健康数据集成功能
-class DnurseHealthPlugin {
+/// HealthBridge的主类，提供多平台健康数据集成功能
+class HealthBridge {
   /// 获取平台版本信息
   static Future<String?> getPlatformVersion() {
-    return DnurseHealthPluginPlatform.instance.getPlatformVersion();
+    return HealthBridgePlatform.instance.getPlatformVersion();
   }
 
   /// 获取当前设备支持的健康平台列表
   /// 
   /// 返回当前设备上可用的健康平台，如Samsung Health、Apple Health等
   static Future<List<HealthPlatform>> getAvailableHealthPlatforms() {
-    return DnurseHealthPluginPlatform.instance.getAvailableHealthPlatforms();
+    return HealthBridgePlatform.instance.getAvailableHealthPlatforms();
   }
 
   /// 初始化指定的健康平台
@@ -23,7 +23,7 @@ class DnurseHealthPlugin {
   static Future<HealthDataResult> initializeHealthPlatform(
     HealthPlatform platform,
   ) {
-    return DnurseHealthPluginPlatform.instance.initializeHealthPlatform(platform);
+    return HealthBridgePlatform.instance.initializeHealthPlatform(platform);
   }
 
 
@@ -35,7 +35,7 @@ class DnurseHealthPlugin {
   static Future<HealthDataResult> readStepCount({
     required HealthPlatform platform,
   }) {
-    return DnurseHealthPluginPlatform.instance.readStepCount(
+    return HealthBridgePlatform.instance.readStepCount(
       platform: platform,
     );
   }
@@ -49,7 +49,7 @@ class DnurseHealthPlugin {
     required DateTime date,
     required HealthPlatform platform,
   }) {
-    return DnurseHealthPluginPlatform.instance.readStepCountForDate(
+    return HealthBridgePlatform.instance.readStepCountForDate(
       date: date,
       platform: platform,
     );
@@ -66,7 +66,7 @@ class DnurseHealthPlugin {
     required DateTime endDate,
     required HealthPlatform platform,
   }) {
-    return DnurseHealthPluginPlatform.instance.readStepCountForDateRange(
+    return HealthBridgePlatform.instance.readStepCountForDateRange(
       startDate: startDate,
       endDate: endDate,
       platform: platform,
@@ -77,7 +77,7 @@ class DnurseHealthPlugin {
   /// 
   /// 用于清理资源，通常在应用退出时调用
   static Future<void> disconnect() {
-    return DnurseHealthPluginPlatform.instance.disconnect();
+    return HealthBridgePlatform.instance.disconnect();
   }
 
   // 便利方法

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:dnurse_health_plugin/dnurse_health_plugin.dart';
+import 'package:health_bridge/health_bridge.dart';
 
 void main() {
   runApp(const MyApp());
@@ -36,8 +36,8 @@ class _MyAppState extends State<MyApp> {
     List<HealthPlatform> platforms = [];
     
     try {
-      platformVersion = await DnurseHealthPlugin.getPlatformVersion() ?? 'Unknown platform version';
-      platforms = await DnurseHealthPlugin.getAvailableHealthPlatforms();
+      platformVersion = await HealthBridge.getPlatformVersion() ?? 'Unknown platform version';
+      platforms = await HealthBridge.getAvailableHealthPlatforms();
     } on PlatformException {
       platformVersion = 'Failed to get platform version.';
     }
@@ -57,7 +57,7 @@ class _MyAppState extends State<MyApp> {
     if (_selectedPlatform == null) return;
     
     try {
-      final result = await DnurseHealthPlugin.initializeHealthPlatform(_selectedPlatform!);
+      final result = await HealthBridge.initializeHealthPlatform(_selectedPlatform!);
       setState(() {
         if (result.isSuccess) {
           _initStatus = 'Platform ${_selectedPlatform!.displayName} initialized successfully';
@@ -76,7 +76,7 @@ class _MyAppState extends State<MyApp> {
     if (_selectedPlatform == null) return;
     
     try {
-      final result = await DnurseHealthPlugin.readStepCount(platform: _selectedPlatform!);
+      final result = await HealthBridge.readStepCount(platform: _selectedPlatform!);
       setState(() {
         if (result.isSuccess) {
           final totalSteps = result.totalCount;
@@ -96,7 +96,7 @@ class _MyAppState extends State<MyApp> {
     if (_selectedPlatform == null) return;
     
     try {
-      final result = await DnurseHealthPlugin.readStepCountForDate(
+      final result = await HealthBridge.readStepCountForDate(
         date: _selectedDate,
         platform: _selectedPlatform!,
       );
@@ -138,7 +138,7 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          title: const Text('DNurse Health Plugin Demo'),
+          title: const Text('Health Bridge Demo'),
           backgroundColor: Colors.blue[600],
         ),
         body: SingleChildScrollView(

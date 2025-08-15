@@ -164,13 +164,13 @@
       "languageVersion": "3.3"
     },
     {
-      "name": "dnurse_health_plugin",
+      "name": "health_bridge",
       "rootUri": "../",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     }
   ],
-  "generated": "2025-08-15T09:56:42.074881Z",
+  "generated": "2025-08-15T11:42:40.371635Z",
   "generator": "pub",
   "generatorVersion": "3.4.1",
   "flutterRoot": "file:///Users/tang/fvm/versions/3.22.1",

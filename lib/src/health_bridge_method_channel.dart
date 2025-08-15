@@ -1,14 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'dnurse_health_plugin_platform_interface.dart';
+import 'health_bridge_platform_interface.dart';
 import 'models/health_data.dart';
 import 'models/health_platform.dart';
 
-/// DnurseHealthPlugin的MethodChannel实现
-class MethodChannelDnurseHealthPlugin extends DnurseHealthPluginPlatform {
+/// HealthBridge的MethodChannel实现
+class MethodChannelHealthBridge extends HealthBridgePlatform {
   /// 用于与原生代码通信的方法通道
   @visibleForTesting
-  final methodChannel = const MethodChannel('dnurse_health_plugin');
+  final methodChannel = const MethodChannel('health_bridge');
 
   @override
   Future<String?> getPlatformVersion() async {

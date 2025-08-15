@@ -7,7 +7,11 @@
       "Bash(gh repo create:*)",
       "Bash(gh auth:*)",
       "Bash(cp:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git push:*)",
+      "Bash(mv:*)",
+      "Bash(gh repo rename:*)",
+      "Bash(git remote set-url:*)"
     ],
     "deny": [],
     "ask": [],

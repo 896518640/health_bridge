@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.1] - 2025-01-15
 
 ### Added
-- Initial release of DNurse Health Plugin
+- Initial release of Health Bridge plugin
 - Cross-platform health data integration for Android and iOS
 - Samsung Health SDK support for Android devices
 - Apple HealthKit integration for iOS devices
