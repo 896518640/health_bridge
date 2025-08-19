@@ -5,9 +5,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
+import com.health.bridge.health_bridge.utils.TimeCompat
 import io.flutter.plugin.common.MethodChannel.Result
 
 import com.health.bridge.health_bridge.providers.HealthProviderFactory
@@ -104,14 +102,14 @@ class HealthBridgeService(context: Context) {
                 }
                 // 指定日期查询
                 startDateMillis != null && endDateMillis == null -> {
-                    val date = millisToLocalDate(startDateMillis)
+                    val date = TimeCompat.millisToLocalDate(startDateMillis)
                     Log.d(TAG, "Reading step count for date $date on $platform")
                     provider.readStepCountForDate(date)
                 }
                 // 日期范围查询
                 startDateMillis != null && endDateMillis != null -> {
-                    val startDate = millisToLocalDate(startDateMillis)
-                    val endDate = millisToLocalDate(endDateMillis)
+                    val startDate = TimeCompat.millisToLocalDate(startDateMillis)
+                    val endDate = TimeCompat.millisToLocalDate(endDateMillis)
                     Log.d(TAG, "Reading step count for range $startDate to $endDate on $platform")
                     provider.readStepCountForDateRange(startDate, endDate)
                 }
@@ -164,12 +162,4 @@ class HealthBridgeService(context: Context) {
         }
     }
     
-    /**
-     * 毫秒转LocalDate
-     */
-    private fun millisToLocalDate(millis: Long): LocalDate {
-        return Instant.ofEpochMilli(millis)
-            .atZone(ZoneId.systemDefault())
-            .toLocalDate()
-    }
 }

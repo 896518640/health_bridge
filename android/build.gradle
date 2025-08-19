@@ -47,7 +47,7 @@ android {
     }
 
     defaultConfig {
-        minSdk = 29  // 三星健康SDK要求最低API 29
+        minSdk = 21
     }
 
     dependencies {

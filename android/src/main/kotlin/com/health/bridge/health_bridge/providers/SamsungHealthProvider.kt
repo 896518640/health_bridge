@@ -3,12 +3,14 @@ package com.health.bridge.health_bridge.providers
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.*
-import java.time.LocalDate
-import java.time.ZoneId
 import kotlin.coroutines.suspendCoroutine
 import kotlin.coroutines.resume
+import com.health.bridge.health_bridge.utils.TimeCompat
+import java.time.LocalDate
+import java.time.ZoneId
 
 // Samsung Health SDK imports
 import com.samsung.android.sdk.health.data.HealthDataService
@@ -42,13 +44,24 @@ class SamsungHealthProvider(
         private const val TAG = "SamsungHealthProvider"
         private const val SAMSUNG_HEALTH_PACKAGE = "com.sec.android.app.shealth"
         private const val MIN_VERSION = 6300000L
+        private const val MIN_API_LEVEL = 29
     }
     
     override fun isAvailable(): Boolean {
         return try {
+            // 首先检查系统API级别
+            if (Build.VERSION.SDK_INT < MIN_API_LEVEL) {
+                Log.w(TAG, "Samsung Health Data SDK requires API level $MIN_API_LEVEL or higher, current: ${Build.VERSION.SDK_INT}")
+                return false
+            }
+            
+            // 然后检查Samsung Health应用是否安装且版本足够
             val packageManager = context.packageManager
             val packageInfo = packageManager.getPackageInfo(SAMSUNG_HEALTH_PACKAGE, 0)
-            packageInfo.longVersionCode >= MIN_VERSION
+            val versionCheck = packageInfo.longVersionCode >= MIN_VERSION
+            
+            Log.d(TAG, "Samsung Health availability check - API: ${Build.VERSION.SDK_INT}, Version: ${packageInfo.longVersionCode}, Required: $MIN_VERSION, Available: $versionCheck")
+            versionCheck
         } catch (e: PackageManager.NameNotFoundException) {
             Log.w(TAG, "Samsung Health app not found")
             false
@@ -91,14 +104,16 @@ class SamsungHealthProvider(
     }
     
     override suspend fun readTodayStepCount(): StepCountResult? {
-        return readStepCountForDate(LocalDate.now())
+        return readStepCountForDate(TimeCompat.LocalDate.now())
     }
     
-    override suspend fun readStepCountForDate(date: LocalDate): StepCountResult? = withContext(Dispatchers.IO) {
+    override suspend fun readStepCountForDate(date: TimeCompat.LocalDate): StepCountResult? = withContext(Dispatchers.IO) {
         try {
             val store = healthDataStore ?: return@withContext null
             
-            val stepsResponse = getAggregateResult(store, date)
+            // 转换为java.time.LocalDate（Samsung Health SDK需要）
+            val javaDate = LocalDate.of(date.year, date.month, date.dayOfMonth)
+            val stepsResponse = getAggregateResult(store, javaDate)
             var totalSteps = 0L
             
             stepsResponse.dataList.forEach { aggregatedData ->
@@ -112,7 +127,7 @@ class SamsungHealthProvider(
                 data = listOf(
                     StepData(
                         steps = totalSteps.toInt(),
-                        timestamp = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                        timestamp = date.atStartOfDay(),
                         date = date.toString()
                     )
                 ),
@@ -128,7 +143,7 @@ class SamsungHealthProvider(
         }
     }
     
-    override suspend fun readStepCountForDateRange(startDate: LocalDate, endDate: LocalDate): StepCountResult? {
+    override suspend fun readStepCountForDateRange(startDate: TimeCompat.LocalDate, endDate: TimeCompat.LocalDate): StepCountResult? {
         try {
             val dailyResults = mutableListOf<StepData>()
             var totalSteps = 0

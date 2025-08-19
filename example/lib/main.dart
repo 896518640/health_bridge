@@ -257,6 +257,29 @@ class _HealthBridgeDemoState extends State<HealthBridgeDemo> {
                       Text('运行在: $_platformVersion'),
                       const SizedBox(height: 8),
                       Text('可用平台: ${_availablePlatforms.map((p) => p.displayName).join(', ')}'),
+                      if (_availablePlatforms.isEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade300),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.orange.shade700),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '当前设备不支持 Samsung Health 功能。\n需要 Android 10 (API 29) 或更高版本',
+                                  style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

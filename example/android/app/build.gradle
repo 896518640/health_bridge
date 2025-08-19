@@ -38,7 +38,7 @@ android {
         applicationId = "com.dnurse.health.plugin.dnurse_health_plugin_example"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdk = 29  // 三星健康SDK要求最低API 29
+        minSdk = 21
         targetSdk = flutter.targetSdkVersion
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
@@ -60,12 +60,4 @@ flutter {
 dependencies {
     // Samsung Health SDK - 在example中实际包含JAR
     implementation files("libs/samsung-health-data-api-1.0.0.jar")
-    
-    // 必要的Android依赖
-    implementation "androidx.core:core-ktx:1.9.0"
-    implementation "androidx.appcompat:appcompat:1.6.1"
-    
-    // Kotlin协程支持
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4"
 }

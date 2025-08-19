@@ -1,7 +1,7 @@
 package com.health.bridge.health_bridge.providers
 
-import java.time.LocalDate
 import io.flutter.plugin.common.MethodChannel.Result
+import com.health.bridge.health_bridge.utils.TimeCompat
 
 /**
  * 健康数据提供者接口 - 策略模式
@@ -32,12 +32,12 @@ interface HealthDataProvider {
     /**
      * 读取指定日期步数
      */
-    suspend fun readStepCountForDate(date: LocalDate): StepCountResult?
+    suspend fun readStepCountForDate(date: TimeCompat.LocalDate): StepCountResult?
     
     /**
      * 读取日期范围步数
      */
-    suspend fun readStepCountForDateRange(startDate: LocalDate, endDate: LocalDate): StepCountResult?
+    suspend fun readStepCountForDateRange(startDate: TimeCompat.LocalDate, endDate: TimeCompat.LocalDate): StepCountResult?
     
     /**
      * 清理资源
