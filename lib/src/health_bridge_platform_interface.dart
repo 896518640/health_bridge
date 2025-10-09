@@ -58,4 +58,170 @@ abstract class HealthBridgePlatform extends PlatformInterface {
   Future<void> disconnect() {
     throw UnimplementedError('disconnect() has not been implemented.');
   }
+
+  // ========== 权限管理 ==========
+
+  /// 检查指定数据类型的权限状态
+  ///
+  /// [platform] 健康平台
+  /// [dataTypes] 要检查的数据类型列表
+  /// [operation] 操作类型（读/写）
+  ///
+  /// 返回每个数据类型对应的权限状态
+  Future<Map<HealthDataType, HealthPermissionStatus>> checkPermissions({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    required HealthDataOperation operation,
+  }) {
+    throw UnimplementedError('checkPermissions() has not been implemented.');
+  }
+
+  /// 申请指定数据类型的权限
+  ///
+  /// [platform] 健康平台
+  /// [dataTypes] 要申请的数据类型列表
+  /// [operations] 操作类型列表（可以同时申请读写）
+  /// [reason] 申请理由（可选，用于UI展示）
+  ///
+  /// 返回申请结果
+  Future<HealthDataResult> requestPermissions({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    required List<HealthDataOperation> operations,
+    String? reason,
+  }) {
+    throw UnimplementedError('requestPermissions() has not been implemented.');
+  }
+
+  /// 按权限组申请权限（便利方法）
+  ///
+  /// [platform] 健康平台
+  /// [group] 权限组
+  /// [operations] 操作类型列表
+  /// [reason] 申请理由
+  Future<HealthDataResult> requestPermissionGroup({
+    required HealthPlatform platform,
+    required HealthPermissionGroup group,
+    required List<HealthDataOperation> operations,
+    String? reason,
+  }) {
+    return requestPermissions(
+      platform: platform,
+      dataTypes: group.dataTypes,
+      operations: operations,
+      reason: reason,
+    );
+  }
+
+  // ========== 平台能力查询 ==========
+
+  /// 获取指定平台支持的所有数据类型
+  ///
+  /// [platform] 健康平台
+  /// [operation] 操作类型（可选，不指定则返回所有）
+  ///
+  /// 返回该平台支持的数据类型列表
+  Future<List<HealthDataType>> getSupportedDataTypes({
+    required HealthPlatform platform,
+    HealthDataOperation? operation,
+  }) async {
+    // 默认实现：使用静态能力映射
+    return platform.getSupportedDataTypes(operation: operation);
+  }
+
+  /// 检查指定平台是否支持某个数据类型
+  ///
+  /// [platform] 健康平台
+  /// [dataType] 数据类型
+  /// [operation] 操作类型
+  ///
+  /// 返回是否支持
+  Future<bool> isDataTypeSupported({
+    required HealthPlatform platform,
+    required HealthDataType dataType,
+    required HealthDataOperation operation,
+  }) async {
+    // 默认实现：使用静态能力映射
+    return platform.supports(dataType, operation: operation);
+  }
+
+  /// 获取指定平台的详细能力信息
+  ///
+  /// [platform] 健康平台
+  ///
+  /// 返回能力列表（包含读写权限、特殊说明等）
+  Future<List<PlatformCapability>> getPlatformCapabilities({
+    required HealthPlatform platform,
+  }) async {
+    // 默认实现：返回静态能力映射
+    return platform.capabilities;
+  }
+
+  // ========== 统一数据读写接口 ==========
+
+  /// 读取健康数据（通用方法）
+  ///
+  /// [platform] 数据源健康平台
+  /// [dataType] 数据类型
+  /// [startDate] 开始日期
+  /// [endDate] 结束日期
+  /// [limit] 数据条数限制（可选）
+  Future<HealthDataResult> readHealthData({
+    required HealthPlatform platform,
+    required HealthDataType dataType,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit,
+  }) {
+    throw UnimplementedError('readHealthData() has not been implemented.');
+  }
+
+  /// 批量读取多种健康数据
+  ///
+  /// [platform] 数据源健康平台
+  /// [dataTypes] 数据类型列表
+  /// [startDate] 开始日期
+  /// [endDate] 结束日期
+  Future<Map<HealthDataType, HealthDataResult>> readMultipleHealthData({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final results = <HealthDataType, HealthDataResult>{};
+
+    for (final dataType in dataTypes) {
+      final result = await readHealthData(
+        platform: platform,
+        dataType: dataType,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      results[dataType] = result;
+    }
+
+    return results;
+  }
+
+  /// 写入单条健康数据
+  ///
+  /// [platform] 目标健康平台
+  /// [data] 要写入的健康数据
+  Future<HealthDataResult> writeHealthData({
+    required HealthPlatform platform,
+    required HealthData data,
+  }) {
+    throw UnimplementedError('writeHealthData() has not been implemented.');
+  }
+
+  /// 批量写入健康数据
+  ///
+  /// [platform] 目标健康平台
+  /// [dataList] 要写入的健康数据列表
+  Future<HealthDataResult> writeBatchHealthData({
+    required HealthPlatform platform,
+    required List<HealthData> dataList,
+  }) {
+    throw UnimplementedError('writeBatchHealthData() has not been implemented.');
+  }
 }

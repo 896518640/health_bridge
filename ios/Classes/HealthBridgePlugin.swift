@@ -14,6 +14,15 @@ private struct PluginConstants {
         static let readDailyGlucoseData = "readDailyGlucoseData"
         static let readStepCount = "readStepCount"
         static let disconnect = "disconnect"
+
+        // 新增方法
+        static let checkPermissions = "checkPermissions"
+        static let requestPermissions = "requestPermissions"
+        static let getSupportedDataTypes = "getSupportedDataTypes"
+        static let isDataTypeSupported = "isDataTypeSupported"
+        static let getPlatformCapabilities = "getPlatformCapabilities"
+        static let readHealthData = "readHealthData"
+        static let writeHealthData = "writeHealthData"
     }
     
     struct ErrorCodes {
@@ -86,29 +95,51 @@ public class HealthBridgePlugin: NSObject, FlutterPlugin {
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         HealthLogger.log("Handling method: \(call.method)")
-        
+
         switch call.method {
         case PluginConstants.Methods.getPlatformVersion:
             handleGetPlatformVersion(result: result)
-            
+
         case PluginConstants.Methods.getAvailableHealthPlatforms:
             handleGetAvailableHealthPlatforms(result: result)
-            
+
         case PluginConstants.Methods.initializeHealthPlatform:
             handleInitializeHealthPlatform(call: call, result: result)
-            
+
         case PluginConstants.Methods.insertGlucoseData:
             handleInsertGlucoseData(call: call, result: result)
-            
+
         case PluginConstants.Methods.readDailyGlucoseData:
             handleReadDailyGlucoseData(call: call, result: result)
-            
+
         case PluginConstants.Methods.readStepCount:
             handleReadStepCountUnified(call: call, result: result)
-            
+
         case PluginConstants.Methods.disconnect:
             handleDisconnect(result: result)
-            
+
+        // 新增方法处理
+        case PluginConstants.Methods.checkPermissions:
+            handleCheckPermissions(call: call, result: result)
+
+        case PluginConstants.Methods.requestPermissions:
+            handleRequestPermissions(call: call, result: result)
+
+        case PluginConstants.Methods.getSupportedDataTypes:
+            handleGetSupportedDataTypes(call: call, result: result)
+
+        case PluginConstants.Methods.isDataTypeSupported:
+            handleIsDataTypeSupported(call: call, result: result)
+
+        case PluginConstants.Methods.getPlatformCapabilities:
+            handleGetPlatformCapabilities(call: call, result: result)
+
+        case PluginConstants.Methods.readHealthData:
+            handleReadHealthData(call: call, result: result)
+
+        case PluginConstants.Methods.writeHealthData:
+            handleWriteHealthData(call: call, result: result)
+
         default:
             HealthLogger.log("Method not implemented: \(call.method)", level: .warning)
             result(FlutterMethodNotImplemented)
@@ -336,11 +367,208 @@ private extension HealthBridgePlugin {
         }
     }
     
-    
+
     func handleDisconnect(result: @escaping FlutterResult) {
         HealthLogger.log("Disconnecting from Apple Health")
         appleHealthManager?.disconnect()
         result(nil)
+    }
+
+    // MARK: - New API Handlers
+
+    func handleCheckPermissions(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result),
+              let dataTypesArray = arguments["dataTypes"] as? [String],
+              let operation = arguments["operation"] as? String else { return }
+
+        guard platform == PluginConstants.appleHealthPlatform else {
+            result(HealthResponse.failure(message: "Platform \(platform) is not supported", platform: platform))
+            return
+        }
+
+        HealthLogger.log("Checking permissions for \(dataTypesArray.count) data types")
+
+        appleHealthManager?.checkPermissions(for: dataTypesArray, operation: operation) { permissionStatus in
+            let response = HealthResponse.success(data: [
+                "platform": PluginConstants.appleHealthPlatform,
+                "permissions": permissionStatus
+            ])
+            result(response)
+        }
+    }
+
+    func handleRequestPermissions(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result),
+              let dataTypesArray = arguments["dataTypes"] as? [String],
+              let operationsArray = arguments["operations"] as? [String] else { return }
+
+        guard platform == PluginConstants.appleHealthPlatform else {
+            result(HealthResponse.failure(message: "Platform \(platform) is not supported", platform: platform))
+            return
+        }
+
+        let reason = arguments["reason"] as? String
+        HealthLogger.log("Requesting permissions for \(dataTypesArray.count) data types. Reason: \(reason ?? "none")")
+
+        appleHealthManager?.requestPermissions(for: dataTypesArray, operations: operationsArray) { success, error in
+            if success {
+                HealthLogger.log("Permissions requested successfully")
+                let response = HealthResponse.success(data: [
+                    "status": "success",
+                    "platform": PluginConstants.appleHealthPlatform,
+                    "message": "Permissions requested successfully"
+                ])
+                result(response)
+            } else {
+                HealthLogger.log("Failed to request permissions: \(error ?? "Unknown error")", level: .error)
+                result(HealthResponse.failure(message: error ?? "Failed to request permissions", platform: PluginConstants.appleHealthPlatform))
+            }
+        }
+    }
+
+    func handleGetSupportedDataTypes(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result) else { return }
+
+        guard platform == PluginConstants.appleHealthPlatform else {
+            result([])
+            return
+        }
+
+        let supportedTypes = appleHealthManager?.getSupportedDataTypes() ?? []
+        HealthLogger.log("Returning \(supportedTypes.count) supported data types")
+        result(supportedTypes)
+    }
+
+    func handleIsDataTypeSupported(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result),
+              let dataType = arguments["dataType"] as? String,
+              let operation = arguments["operation"] as? String else { return }
+
+        guard platform == PluginConstants.appleHealthPlatform else {
+            result(false)
+            return
+        }
+
+        let isSupported = appleHealthManager?.isDataTypeSupported(dataType, operation: operation) ?? false
+        HealthLogger.log("Data type '\(dataType)' supported for '\(operation)': \(isSupported)")
+        result(isSupported)
+    }
+
+    func handleGetPlatformCapabilities(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result) else { return }
+
+        guard platform == PluginConstants.appleHealthPlatform else {
+            result([])
+            return
+        }
+
+        // 构建能力列表
+        let supportedTypes = appleHealthManager?.getSupportedDataTypes() ?? []
+        let capabilities: [[String: Any]] = supportedTypes.map { dataType in
+            let canWrite = appleHealthManager?.isDataTypeSupported(dataType, operation: "write") ?? false
+            return [
+                "dataType": dataType,
+                "canRead": true, // Apple Health 所有类型都可读
+                "canWrite": canWrite,
+                "requiresSpecialPermission": false,
+                "notes": nil as String? as Any
+            ]
+        }
+
+        HealthLogger.log("Returning capabilities for \(capabilities.count) data types")
+        result(capabilities)
+    }
+
+    func handleReadHealthData(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result),
+              let dataType = arguments["dataType"] as? String else { return }
+
+        guard platform == PluginConstants.appleHealthPlatform else {
+            result(HealthResponse.failure(message: "Platform \(platform) is not supported", platform: platform))
+            return
+        }
+
+        let startDateMillis = arguments["startDate"] as? Double
+        let endDateMillis = arguments["endDate"] as? Double
+        let limit = arguments["limit"] as? Int
+
+        let startDate = startDateMillis.map { Date(timeIntervalSince1970: $0 / 1000.0) }
+        let endDate = endDateMillis.map { Date(timeIntervalSince1970: $0 / 1000.0) }
+
+        HealthLogger.log("Reading health data for type: \(dataType)")
+
+        appleHealthManager?.readHealthData(
+            dataType: dataType,
+            startDate: startDate,
+            endDate: endDate,
+            limit: limit
+        ) { dataList, error in
+            if let error = error {
+                HealthLogger.log("Failed to read health data: \(error)", level: .error)
+                result(HealthResponse.failure(message: error, platform: PluginConstants.appleHealthPlatform))
+            } else {
+                HealthLogger.log("Successfully read \(dataList.count) records")
+                let response = HealthResponse.success(data: [
+                    "status": "success",
+                    "platform": PluginConstants.appleHealthPlatform,
+                    "data": dataList,
+                    "count": dataList.count,
+                    "totalSteps": dataList.reduce(0.0) { sum, item in
+                        sum + ((item["value"] as? Double) ?? 0.0)
+                    }
+                ])
+                result(response)
+            }
+        }
+    }
+
+    func handleWriteHealthData(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result),
+              let dataDict = arguments["data"] as? [String: Any],
+              let dataType = dataDict["type"] as? String,
+              let value = dataDict["value"] as? Double,
+              let timestamp = dataDict["timestamp"] as? Int64 else { return }
+
+        guard platform == PluginConstants.appleHealthPlatform else {
+            result(HealthResponse.failure(message: "Platform \(platform) is not supported", platform: platform))
+            return
+        }
+
+        HealthLogger.log("Writing health data: \(dataType) = \(value)")
+
+        appleHealthManager?.writeHealthData(
+            dataType: dataType,
+            value: value,
+            timestamp: timestamp
+        ) { success, error in
+            if success {
+                HealthLogger.log("Health data written successfully")
+                let responseData: [String: Any] = [
+                    "type": dataType,
+                    "value": value,
+                    "timestamp": timestamp,
+                    "platform": PluginConstants.appleHealthPlatform
+                ]
+
+                let response = HealthResponse.success(data: [
+                    "status": "success",
+                    "platform": PluginConstants.appleHealthPlatform,
+                    "message": "Health data written successfully",
+                    "data": responseData
+                ])
+                result(response)
+            } else {
+                HealthLogger.log("Failed to write health data: \(error ?? "Unknown error")", level: .error)
+                result(HealthResponse.failure(message: error ?? "Failed to write health data", platform: PluginConstants.appleHealthPlatform))
+            }
+        }
     }
 }
 

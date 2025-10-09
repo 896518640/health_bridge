@@ -8,24 +8,28 @@ class HealthData {
     required this.timestamp,
     required this.unit,
     required this.platform,
+    this.source,
     this.metadata = const {},
   });
 
   /// 数据类型
   final HealthDataType type;
-  
+
   /// 数据值
   final double value;
-  
+
   /// 时间戳 (毫秒)
   final int timestamp;
-  
+
   /// 单位
   final String unit;
-  
+
   /// 来源平台
   final HealthPlatform platform;
-  
+
+  /// 数据来源应用/设备名称（如：Apple Watch, iPhone 等）
+  final String? source;
+
   /// 额外元数据
   final Map<String, dynamic> metadata;
 
@@ -43,6 +47,7 @@ class HealthData {
         (platform) => platform.key == json['platform'],
         orElse: () => HealthPlatform.samsungHealth,
       ),
+      source: json['source'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>? ?? {},
     );
   }
@@ -55,6 +60,7 @@ class HealthData {
       'timestamp': timestamp,
       'unit': unit,
       'platform': platform.key,
+      'source': source,
       'metadata': metadata,
     };
   }
@@ -66,6 +72,7 @@ class HealthData {
     int? timestamp,
     String? unit,
     HealthPlatform? platform,
+    String? source,
     Map<String, dynamic>? metadata,
   }) {
     return HealthData(
@@ -74,6 +81,7 @@ class HealthData {
       timestamp: timestamp ?? this.timestamp,
       unit: unit ?? this.unit,
       platform: platform ?? this.platform,
+      source: source ?? this.source,
       metadata: metadata ?? this.metadata,
     );
   }

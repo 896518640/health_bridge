@@ -136,6 +136,293 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
     }
   }
 
+  // ========== 权限管理实现 ==========
+
+  @override
+  Future<Map<HealthDataType, HealthPermissionStatus>> checkPermissions({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    required HealthDataOperation operation,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod(
+        'checkPermissions',
+        {
+          'platform': platform.key,
+          'dataTypes': dataTypes.map((t) => t.key).toList(),
+          'operation': operation.key,
+        },
+      );
+
+      if (result == null) return {};
+
+      final resultMap = Map<String, dynamic>.from(result as Map);
+      final permissionsMap = Map<String, dynamic>.from(resultMap['permissions'] as Map? ?? {});
+
+      final permissions = <HealthDataType, HealthPermissionStatus>{};
+      for (final dataType in dataTypes) {
+        final statusKey = permissionsMap[dataType.key] as String?;
+        if (statusKey != null) {
+          permissions[dataType] = HealthPermissionStatus.values.firstWhere(
+            (s) => s.key == statusKey,
+            orElse: () => HealthPermissionStatus.notDetermined,
+          );
+        }
+      }
+
+      return permissions;
+    } catch (e) {
+      debugPrint('Error checking permissions: $e');
+      return {};
+    }
+  }
+
+  @override
+  Future<HealthDataResult> requestPermissions({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    required List<HealthDataOperation> operations,
+    String? reason,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod(
+        'requestPermissions',
+        {
+          'platform': platform.key,
+          'dataTypes': dataTypes.map((t) => t.key).toList(),
+          'operations': operations.map((o) => o.key).toList(),
+          if (reason != null) 'reason': reason,
+        },
+      );
+
+      if (result == null) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: platform,
+          message: 'No result returned from platform',
+        );
+      }
+
+      final resultMap = Map<String, dynamic>.from(result as Map);
+      return _parseHealthDataResult(resultMap, platform);
+    } catch (e) {
+      debugPrint('Error requesting permissions: $e');
+      return HealthDataResult(
+        status: HealthDataStatus.error,
+        platform: platform,
+        message: e.toString(),
+      );
+    }
+  }
+
+  // ========== 平台能力查询实现 ==========
+
+  @override
+  Future<List<HealthDataType>> getSupportedDataTypes({
+    required HealthPlatform platform,
+    HealthDataOperation? operation,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod<List<dynamic>>(
+        'getSupportedDataTypes',
+        {'platform': platform.key},
+      );
+
+      if (result == null) return super.getSupportedDataTypes(platform: platform, operation: operation);
+
+      final supportedKeys = result.cast<String>();
+      var supportedTypes = supportedKeys
+          .map((key) => HealthDataType.values.firstWhere(
+                (t) => t.key == key,
+                orElse: () => HealthDataType.steps, // 默认值
+              ))
+          .toList();
+
+      // 如果指定了操作类型，进一步过滤
+      if (operation != null) {
+        supportedTypes = supportedTypes.where((type) {
+          return platform.supports(type, operation: operation);
+        }).toList();
+      }
+
+      return supportedTypes;
+    } catch (e) {
+      debugPrint('Error getting supported data types: $e');
+      return super.getSupportedDataTypes(platform: platform, operation: operation);
+    }
+  }
+
+  @override
+  Future<bool> isDataTypeSupported({
+    required HealthPlatform platform,
+    required HealthDataType dataType,
+    required HealthDataOperation operation,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod<bool>(
+        'isDataTypeSupported',
+        {
+          'platform': platform.key,
+          'dataType': dataType.key,
+          'operation': operation.key,
+        },
+      );
+
+      return result ?? super.isDataTypeSupported(platform: platform, dataType: dataType, operation: operation);
+    } catch (e) {
+      debugPrint('Error checking data type support: $e');
+      return super.isDataTypeSupported(platform: platform, dataType: dataType, operation: operation);
+    }
+  }
+
+  @override
+  Future<List<PlatformCapability>> getPlatformCapabilities({
+    required HealthPlatform platform,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod<List<dynamic>>(
+        'getPlatformCapabilities',
+        {'platform': platform.key},
+      );
+
+      if (result == null) return super.getPlatformCapabilities(platform: platform);
+
+      final capabilities = result.map((item) {
+        final capMap = Map<String, dynamic>.from(item as Map);
+        final dataTypeKey = capMap['dataType'] as String;
+        final dataType = HealthDataType.values.firstWhere(
+          (t) => t.key == dataTypeKey,
+          orElse: () => HealthDataType.steps,
+        );
+
+        return PlatformCapability(
+          dataType: dataType,
+          canRead: capMap['canRead'] as bool? ?? false,
+          canWrite: capMap['canWrite'] as bool? ?? false,
+          requiresSpecialPermission: capMap['requiresSpecialPermission'] as bool? ?? false,
+          notes: capMap['notes'] as String?,
+        );
+      }).toList();
+
+      return capabilities;
+    } catch (e) {
+      debugPrint('Error getting platform capabilities: $e');
+      return super.getPlatformCapabilities(platform: platform);
+    }
+  }
+
+  // ========== 统一数据读写实现 ==========
+
+  @override
+  Future<HealthDataResult> readHealthData({
+    required HealthPlatform platform,
+    required HealthDataType dataType,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit,
+  }) async {
+    try {
+      final Map<String, dynamic> arguments = {
+        'platform': platform.key,
+        'dataType': dataType.key,
+      };
+
+      if (startDate != null) {
+        arguments['startDate'] = startDate.millisecondsSinceEpoch.toDouble();
+      }
+      if (endDate != null) {
+        arguments['endDate'] = endDate.millisecondsSinceEpoch.toDouble();
+      }
+      if (limit != null) {
+        arguments['limit'] = limit;
+      }
+
+      final result = await methodChannel.invokeMethod('readHealthData', arguments);
+
+      if (result == null) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: platform,
+          data: [],
+        );
+      }
+
+      final resultMap = Map<String, dynamic>.from(result as Map);
+      return _parseHealthDataResult(resultMap, platform);
+    } catch (e) {
+      debugPrint('Error reading health data: $e');
+      return HealthDataResult(
+        status: HealthDataStatus.error,
+        platform: platform,
+        message: e.toString(),
+      );
+    }
+  }
+
+  @override
+  Future<HealthDataResult> writeHealthData({
+    required HealthPlatform platform,
+    required HealthData data,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod(
+        'writeHealthData',
+        {
+          'platform': platform.key,
+          'data': data.toJson(),
+        },
+      );
+
+      if (result == null) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: platform,
+          message: 'No result returned from platform',
+        );
+      }
+
+      final resultMap = Map<String, dynamic>.from(result as Map);
+      return _parseHealthDataResult(resultMap, platform);
+    } catch (e) {
+      debugPrint('Error writing health data: $e');
+      return HealthDataResult(
+        status: HealthDataStatus.error,
+        platform: platform,
+        message: e.toString(),
+      );
+    }
+  }
+
+  @override
+  Future<HealthDataResult> writeBatchHealthData({
+    required HealthPlatform platform,
+    required List<HealthData> dataList,
+  }) async {
+    try {
+      // 暂时使用循环写入实现批量写入
+      // 未来可以优化为原生层的批量操作
+      for (final data in dataList) {
+        final result = await writeHealthData(platform: platform, data: data);
+        if (!result.isSuccess) {
+          return result; // 遇到第一个失败就返回
+        }
+      }
+
+      return HealthDataResult(
+        status: HealthDataStatus.success,
+        platform: platform,
+        message: 'Successfully wrote ${dataList.length} records',
+      );
+    } catch (e) {
+      debugPrint('Error writing batch health data: $e');
+      return HealthDataResult(
+        status: HealthDataStatus.error,
+        platform: platform,
+        message: e.toString(),
+      );
+    }
+  }
+
   /// 解析原生返回的结果
   HealthDataResult _parseHealthDataResult(
     Map<String, dynamic> result,
@@ -143,11 +430,11 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
   ) {
     try {
       // 处理成功状态 - 兼容多种成功状态格式
-      if (result['success'] == true || 
-          result['status'] == 'connected' || 
+      if (result['success'] == true ||
+          result['status'] == 'connected' ||
           result['status'] == 'success') {
         final dataList = <HealthData>[];
-        
+
         // 解析单个数据项
         if (result['data'] != null) {
           final data = result['data'];
@@ -172,10 +459,10 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
           }
         }
 
-        final calculatedTotalCount = (result['totalSteps'] as num?)?.toInt() ?? 
-                      (result['count'] as num?)?.toInt() ?? 
-                      dataList.length;
-        
+        final calculatedTotalCount = (result['totalSteps'] as num?)?.toInt() ??
+            (result['count'] as num?)?.toInt() ??
+            dataList.length;
+
         return HealthDataResult(
           status: HealthDataStatus.success,
           platform: platform,
