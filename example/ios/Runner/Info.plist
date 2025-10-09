@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>This app needs to read health data from HealthKit to display your health information like step count, glucose readings, and other health metrics.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>This app needs to write health data to HealthKit to store your health information like glucose readings, blood pressure, and other health metrics.</string>
 </dict>
 </plist>
