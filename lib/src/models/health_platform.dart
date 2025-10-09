@@ -37,7 +37,22 @@ enum HealthDataType {
   // === 其他健康指标 ===
   oxygenSaturation('oxygen_saturation', 'Blood Oxygen Saturation', '%'),
   bodyTemperature('body_temperature', 'Body Temperature', '°C'),
-  respiratoryRate('respiratory_rate', 'Respiratory Rate', 'breaths/min');
+  respiratoryRate('respiratory_rate', 'Respiratory Rate', 'breaths/min'),
+  skinTemperature('skin_temperature', 'Skin Temperature', '°C'),
+  floorsClimbed('floors_climbed', 'Floors Climbed', 'floors'),
+
+  // === 目标类型 (Goal Types) ===
+  stepsGoal('steps_goal', 'Steps Goal', 'count'),
+  activeCaloriesGoal('active_calories_goal', 'Active Calories Goal', 'kcal'),
+  activeTimeGoal('active_time_goal', 'Active Time Goal', 'minutes'),
+  sleepGoal('sleep_goal', 'Sleep Goal', 'minutes'),
+  waterGoal('water_goal', 'Water Intake Goal', 'ml'),
+  nutritionGoal('nutrition_goal', 'Nutrition Goal', 'kcal'),
+
+  // === 特殊类型 ===
+  energyScore('energy_score', 'Energy Score', 'score'),
+  workoutLocation('workout_location', 'Workout Location', 'coordinates'),
+  userProfile('user_profile', 'User Profile', 'profile');
 
   const HealthDataType(this.key, this.displayName, this.unit);
 
@@ -218,39 +233,86 @@ class PlatformCapability {
 // ========== 平台能力映射定义 ==========
 
 /// Samsung Health 能力映射
+/// 基于 Samsung Health Data SDK 23 个 DataType 完整映射
+/// 参考: https://developer.samsung.com/health/data/api-reference
 const List<PlatformCapability> _samsungHealthCapabilities = [
-  // 基础运动指标
-  PlatformCapability(dataType: HealthDataType.steps, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.distance, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.activeCalories, canRead: true, canWrite: true),
+  // 1. STEPS - 步数
+  PlatformCapability(dataType: HealthDataType.steps, canRead: true, canWrite: false),
 
-  // 血糖 - Samsung Health 完整支持
-  PlatformCapability(dataType: HealthDataType.glucose, canRead: true, canWrite: true),
+  // 2. HEART_RATE - 心率
+  PlatformCapability(dataType: HealthDataType.heartRate, canRead: true, canWrite: false),
 
-  // 心血管
-  PlatformCapability(dataType: HealthDataType.heartRate, canRead: true, canWrite: true),
+  // 3. SLEEP - 睡眠（支持所有睡眠阶段）
+  PlatformCapability(dataType: HealthDataType.sleepDuration, canRead: true, canWrite: false),
+  PlatformCapability(dataType: HealthDataType.sleepDeep, canRead: true, canWrite: false),
+  PlatformCapability(dataType: HealthDataType.sleepLight, canRead: true, canWrite: false),
+  PlatformCapability(dataType: HealthDataType.sleepREM, canRead: true, canWrite: false),
+
+  // 4. EXERCISE - 运动
+  PlatformCapability(dataType: HealthDataType.workout, canRead: true, canWrite: false),
+
+  // 5. EXERCISE_LOCATION - 运动位置
+  PlatformCapability(dataType: HealthDataType.workoutLocation, canRead: true, canWrite: false),
+
+  // 6. BLOOD_PRESSURE - 血压
   PlatformCapability(dataType: HealthDataType.bloodPressureSystolic, canRead: true, canWrite: true),
   PlatformCapability(dataType: HealthDataType.bloodPressureDiastolic, canRead: true, canWrite: true),
 
-  // 身体指标
+  // 7. BLOOD_GLUCOSE - 血糖
+  PlatformCapability(dataType: HealthDataType.glucose, canRead: true, canWrite: true),
+
+  // 8. BLOOD_OXYGEN - 血氧
+  PlatformCapability(dataType: HealthDataType.oxygenSaturation, canRead: true, canWrite: false),
+
+  // 9. BODY_TEMPERATURE - 体温
+  PlatformCapability(dataType: HealthDataType.bodyTemperature, canRead: true, canWrite: true),
+
+  // 10. SKIN_TEMPERATURE - 皮肤温度
+  PlatformCapability(dataType: HealthDataType.skinTemperature, canRead: true, canWrite: false),
+
+  // 11. BODY_COMPOSITION - 身体成分（体重、身高、体脂、BMI）
   PlatformCapability(dataType: HealthDataType.weight, canRead: true, canWrite: true),
   PlatformCapability(dataType: HealthDataType.height, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.bodyFat, canRead: true, canWrite: true),
+  PlatformCapability(dataType: HealthDataType.bodyFat, canRead: true, canWrite: false),
+  PlatformCapability(dataType: HealthDataType.bmi, canRead: true, canWrite: false),
 
-  // 睡眠
-  PlatformCapability(dataType: HealthDataType.sleepDuration, canRead: true, canWrite: true),
-
-  // 营养
+  // 12. WATER_INTAKE - 饮水量
   PlatformCapability(dataType: HealthDataType.water, canRead: true, canWrite: true),
+
+  // 13. NUTRITION - 营养
   PlatformCapability(dataType: HealthDataType.nutrition, canRead: true, canWrite: true),
 
-  // 运动
-  PlatformCapability(dataType: HealthDataType.workout, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.cycling, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.running, canRead: true, canWrite: true),
+  // 14. FLOORS_CLIMBED - 爬楼层数
+  PlatformCapability(dataType: HealthDataType.floorsClimbed, canRead: true, canWrite: false),
 
-  // 血氧
-  PlatformCapability(dataType: HealthDataType.oxygenSaturation, canRead: true, canWrite: true),
+  // 15. ACTIVITY_SUMMARY - 活动总结（包含活动卡路里、距离等）
+  PlatformCapability(dataType: HealthDataType.activeCalories, canRead: true, canWrite: false),
+  PlatformCapability(dataType: HealthDataType.distance, canRead: true, canWrite: false),
+
+  // 16. ENERGY_SCORE - 能量分数
+  PlatformCapability(dataType: HealthDataType.energyScore, canRead: true, canWrite: false),
+
+  // 17. USER_PROFILE - 用户资料
+  PlatformCapability(dataType: HealthDataType.userProfile, canRead: true, canWrite: true),
+
+  // === Goal Types (目标类型) - 只读 ===
+  // 18. STEPS_GOAL - 步数目标
+  PlatformCapability(dataType: HealthDataType.stepsGoal, canRead: true, canWrite: false),
+
+  // 19. ACTIVE_CALORIES_BURNED_GOAL - 活动卡路里目标
+  PlatformCapability(dataType: HealthDataType.activeCaloriesGoal, canRead: true, canWrite: false),
+
+  // 20. ACTIVE_TIME_GOAL - 活动时间目标
+  PlatformCapability(dataType: HealthDataType.activeTimeGoal, canRead: true, canWrite: false),
+
+  // 21. SLEEP_GOAL - 睡眠目标
+  PlatformCapability(dataType: HealthDataType.sleepGoal, canRead: true, canWrite: false),
+
+  // 22. WATER_INTAKE_GOAL - 饮水目标
+  PlatformCapability(dataType: HealthDataType.waterGoal, canRead: true, canWrite: false),
+
+  // 23. NUTRITION_GOAL - 营养目标
+  PlatformCapability(dataType: HealthDataType.nutritionGoal, canRead: true, canWrite: false),
 ];
 
 /// Apple Health 能力映射

@@ -1,13 +1,14 @@
 package com.health.bridge.health_bridge.utils
 
 import com.health.bridge.health_bridge.providers.StepCountResult
+import com.health.bridge.health_bridge.providers.HealthDataResult
 
 /**
  * 响应构建器 - 建造者模式
  * 负责构建统一格式的Flutter响应数据
  */
 object ResponseBuilder {
-    
+
     /**
      * 构建成功响应
      */
@@ -25,7 +26,7 @@ object ResponseBuilder {
                 "date" to stepData.date
             ).filterValues { it != null }
         }
-        
+
         return mapOf(
             "status" to "success",
             "platform" to platform,
@@ -36,7 +37,23 @@ object ResponseBuilder {
             "dataSource" to result.dataSource
         ) + result.metadata
     }
-    
+
+    /**
+     * 构建健康数据成功响应
+     */
+    fun buildHealthDataSuccessResponse(
+        platform: String,
+        result: HealthDataResult
+    ): Map<String, Any> {
+        return mapOf(
+            "status" to "success",
+            "platform" to platform,
+            "data" to result.data,
+            "count" to result.data.size,
+            "message" to "Health data retrieved successfully"
+        )
+    }
+
     /**
      * 构建错误响应
      */
@@ -52,7 +69,7 @@ object ResponseBuilder {
             "errorType" to errorType
         )
     }
-    
+
     /**
      * 构建平台不支持响应
      */
@@ -63,7 +80,7 @@ object ResponseBuilder {
             "message" to "Platform $platform not supported"
         )
     }
-    
+
     /**
      * 构建参数无效响应
      */

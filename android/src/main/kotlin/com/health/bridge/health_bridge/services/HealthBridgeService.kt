@@ -133,6 +133,188 @@ class HealthBridgeService(context: Context) {
     }
     
     /**
+     * 检查权限状态
+     */
+    suspend fun checkPermissions(
+        platform: String,
+        dataTypes: List<String>,
+        operation: String
+    ): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val provider = getOrCreateProvider(platform)
+                ?: return@withContext emptyMap()
+
+            provider.checkPermissions(dataTypes, operation)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking permissions for platform $platform", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * 申请权限
+     */
+    suspend fun requestPermissions(
+        platform: String,
+        dataTypes: List<String>,
+        operations: List<String>,
+        reason: String?
+    ): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val provider = getOrCreateProvider(platform)
+                ?: return@withContext ResponseBuilder.buildPlatformNotSupportedResponse(platform)
+
+            val success = provider.requestPermissions(dataTypes, operations, reason)
+            if (success) {
+                mapOf(
+                    "status" to "success",
+                    "message" to "Permissions requested successfully"
+                )
+            } else {
+                ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to request permissions",
+                    "permission_request_failed"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting permissions for platform $platform", e)
+            ResponseBuilder.buildErrorResponse(platform, e.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * 获取支持的数据类型
+     */
+    fun getSupportedDataTypes(platform: String, operation: String?): List<String> {
+        return try {
+            val provider = activeProviders[platform] ?: providerFactory.createProvider(platform)
+            provider?.getSupportedDataTypes(operation) ?: emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting supported data types for $platform", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * 检查是否支持某个数据类型
+     */
+    fun isDataTypeSupported(platform: String, dataType: String, operation: String): Boolean {
+        return try {
+            val provider = activeProviders[platform] ?: providerFactory.createProvider(platform)
+            provider?.isDataTypeSupported(dataType, operation) ?: false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking if data type supported for $platform", e)
+            false
+        }
+    }
+
+    /**
+     * 获取平台能力
+     */
+    fun getPlatformCapabilities(platform: String): List<Map<String, Any>> {
+        return try {
+            val provider = activeProviders[platform] ?: providerFactory.createProvider(platform)
+            provider?.getPlatformCapabilities() ?: emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting platform capabilities for $platform", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * 读取健康数据（通用方法）
+     */
+    suspend fun readHealthData(
+        platform: String,
+        dataType: String,
+        startDateMillis: Long?,
+        endDateMillis: Long?,
+        limit: Int?
+    ): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val provider = getOrCreateProvider(platform)
+                ?: return@withContext ResponseBuilder.buildPlatformNotSupportedResponse(platform)
+
+            val startDate = startDateMillis?.let { TimeCompat.millisToLocalDate(it) }
+            val endDate = endDateMillis?.let { TimeCompat.millisToLocalDate(it) }
+
+            val result = provider.readHealthData(dataType, startDate, endDate, limit)
+            result?.let {
+                ResponseBuilder.buildHealthDataSuccessResponse(platform, it)
+            } ?: ResponseBuilder.buildErrorResponse(
+                platform,
+                "Failed to read health data for type: $dataType",
+                "data_read_failed"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading health data for platform $platform", e)
+            ResponseBuilder.buildErrorResponse(platform, e.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * 写入健康数据
+     */
+    suspend fun writeHealthData(
+        platform: String,
+        dataMap: Map<String, Any>
+    ): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val provider = getOrCreateProvider(platform)
+                ?: return@withContext ResponseBuilder.buildPlatformNotSupportedResponse(platform)
+
+            val success = provider.writeHealthData(dataMap)
+            if (success) {
+                mapOf(
+                    "status" to "success",
+                    "message" to "Health data written successfully"
+                )
+            } else {
+                ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to write health data",
+                    "data_write_failed"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error writing health data for platform $platform", e)
+            ResponseBuilder.buildErrorResponse(platform, e.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * 批量写入健康数据
+     */
+    suspend fun writeBatchHealthData(
+        platform: String,
+        dataList: List<Map<String, Any>>
+    ): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val provider = getOrCreateProvider(platform)
+                ?: return@withContext ResponseBuilder.buildPlatformNotSupportedResponse(platform)
+
+            val success = provider.writeBatchHealthData(dataList)
+            if (success) {
+                mapOf(
+                    "status" to "success",
+                    "message" to "Batch health data written successfully",
+                    "count" to dataList.size
+                )
+            } else {
+                ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to write batch health data",
+                    "batch_write_failed"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error writing batch health data for platform $platform", e)
+            ResponseBuilder.buildErrorResponse(platform, e.message ?: "Unknown error")
+        }
+    }
+
+    /**
      * 断开连接
      */
     fun disconnect() {
