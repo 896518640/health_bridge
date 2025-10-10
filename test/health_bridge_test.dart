@@ -14,47 +14,39 @@ class MockHealthBridgePlatform
   Future<String?> getPlatformVersion() => Future.value('42');
 
   @override
-  Future<List<HealthPlatform>> getAvailableHealthPlatforms() => 
+  Future<List<HealthPlatform>> getAvailableHealthPlatforms() =>
       Future.value([HealthPlatform.samsungHealth]);
 
   @override
   Future<HealthDataResult> initializeHealthPlatform(HealthPlatform platform) =>
-      Future.value(HealthDataResult(
+      Future.value(const HealthDataResult(
         status: HealthDataStatus.success,
-        platform: platform,
+        platform: HealthPlatform.samsungHealth,
       ));
 
   @override
   Future<HealthDataResult> readStepCount({required HealthPlatform platform, DateTime? startDate, DateTime? endDate}) =>
-      Future.value(HealthDataResult(
+      Future.value(const HealthDataResult(
         status: HealthDataStatus.success,
-        platform: platform,
-        data: [],
-      ));
-
-  @override
-  Future<HealthDataResult> readStepCountForDate({
-    required DateTime date,
-    required HealthPlatform platform,
-  }) => Future.value(HealthDataResult(
-        status: HealthDataStatus.success,
-        platform: platform,
-        data: [],
-      ));
-
-  @override
-  Future<HealthDataResult> readStepCountForDateRange({
-    required DateTime startDate,
-    required DateTime endDate,
-    required HealthPlatform platform,
-  }) => Future.value(HealthDataResult(
-        status: HealthDataStatus.success,
-        platform: platform,
+        platform: HealthPlatform.samsungHealth,
         data: [],
       ));
 
   @override
   Future<void> disconnect() => Future.value();
+
+  // 使用 noSuchMethod 处理其他未实现的方法
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    // 返回默认的成功结果
+    if (invocation.memberName.toString().contains('Future')) {
+      return Future.value(const HealthDataResult(
+        status: HealthDataStatus.success,
+        platform: HealthPlatform.samsungHealth,
+      ));
+    }
+    return super.noSuchMethod(invocation);
+  }
 }
 
 void main() {

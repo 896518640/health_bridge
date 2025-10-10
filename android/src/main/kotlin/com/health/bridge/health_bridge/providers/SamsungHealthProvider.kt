@@ -443,39 +443,419 @@ class SamsungHealthProvider(
         startDate: TimeCompat.LocalDate?,
         endDate: TimeCompat.LocalDate?,
         limit: Int?
-    ): HealthDataResult? {
-        return try {
-            // For now, only implement steps data
-            if (dataType == "steps") {
-                val start = startDate ?: TimeCompat.LocalDate.now()
-                val end = endDate ?: TimeCompat.LocalDate.now()
+    ): HealthDataResult? = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val store = healthDataStore ?: run {
+                Log.e(TAG, "❌ HealthDataStore is null")
+                return@withContext null
+            }
 
-                val stepResult = readStepCountForDateRange(start, end)
-                stepResult?.let {
-                    HealthDataResult(
-                        data = it.data.map { stepData ->
-                            mapOf(
-                                "type" to "steps",
-                                "value" to stepData.steps.toDouble(),
-                                "timestamp" to stepData.timestamp,
-                                "unit" to "steps",
-                                "platform" to platformKey
-                            )
-                        },
-                        dataSource = it.dataSource,
-                        metadata = it.metadata
-                    )
+            val start = startDate ?: TimeCompat.LocalDate.now()
+            val end = endDate ?: TimeCompat.LocalDate.now()
+
+            Log.d(TAG, "📖 Reading $dataType from $start to $end")
+
+            when (dataType) {
+                // 1. STEPS - 步数
+                "steps" -> readStepsData(store, start, end, limit)
+
+                // 2. HEART_RATE - 心率
+                "heart_rate" -> readHeartRateData(store, start, end, limit)
+
+                // 3. SLEEP - 睡眠
+                "sleep_duration", "sleep_deep", "sleep_light", "sleep_rem" ->
+                    readSleepData(store, start, end, limit, dataType)
+
+                // 4. EXERCISE - 运动
+                "workout" -> readExerciseData(store, start, end, limit)
+
+                // 5. BLOOD_PRESSURE - 血压
+                "blood_pressure_systolic", "blood_pressure_diastolic" ->
+                    readBloodPressureData(store, start, end, limit, dataType)
+
+                // 6. BLOOD_GLUCOSE - 血糖
+                "glucose" -> readBloodGlucoseData(store, start, end, limit)
+
+                // 7. BLOOD_OXYGEN - 血氧
+                "oxygen_saturation" -> readBloodOxygenData(store, start, end, limit)
+
+                // 8. BODY_TEMPERATURE - 体温
+                "body_temperature" -> readBodyTemperatureData(store, start, end, limit)
+
+                // 9. SKIN_TEMPERATURE - 皮肤温度
+                "skin_temperature" -> readSkinTemperatureData(store, start, end, limit)
+
+                // 10. USER_PROFILE - 用户资料（身高、体重）
+                "height", "weight" ->
+                    readUserProfileData(store, start, end, limit, dataType)
+
+                // 11. BODY_COMPOSITION - 身体成分（体脂、BMI）
+                "body_fat", "bmi" ->
+                    readBodyCompositionData(store, start, end, limit, dataType)
+
+                // 11. WATER_INTAKE - 饮水量
+                "water" -> readWaterIntakeData(store, start, end, limit)
+
+                // 12. NUTRITION - 营养
+                "nutrition" -> readNutritionData(store, start, end, limit)
+
+                // 13. FLOORS_CLIMBED - 爬楼层数
+                "floors_climbed" -> readFloorsClimbedData(store, start, end, limit)
+
+                // 14. ACTIVITY_SUMMARY - 活动总结
+                "distance", "active_calories" ->
+                    readActivitySummaryData(store, start, end, limit, dataType)
+
+                // 15. ENERGY_SCORE - 能量分数
+                "energy_score" -> readEnergyScoreData(store, start, end, limit)
+
+                // 16-21. GOAL TYPES - 目标类型
+                "steps_goal", "active_calories_goal", "active_time_goal",
+                "sleep_goal", "water_goal", "nutrition_goal" ->
+                    readGoalData(store, start, end, limit, dataType)
+
+                else -> {
+                    Log.w(TAG, "⚠️ Data type $dataType not yet implemented")
+                    null
                 }
-            } else {
-                // Other data types not yet implemented
-                Log.w(TAG, "Data type $dataType not yet implemented")
-                null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read health data for type: $dataType", e)
+            Log.e(TAG, "❌ Failed to read health data for type: $dataType", e)
+            e.printStackTrace()
             null
         }
     }
+
+    // ==================== Data Reading Helper Methods ====================
+
+    /**
+     * Read Steps data
+     */
+    private suspend fun readStepsData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        return try {
+            val stepResult = readStepCountForDateRange(start, end)
+            stepResult?.let {
+                HealthDataResult(
+                    data = it.data.map { stepData ->
+                        mapOf(
+                            "type" to "steps",
+                            "value" to stepData.steps.toDouble(),
+                            "timestamp" to stepData.timestamp,
+                            "unit" to "steps",
+                            "platform" to platformKey
+                        )
+                    },
+                    dataSource = it.dataSource,
+                    metadata = it.metadata
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to read steps data", e)
+            null
+        }
+    }
+
+    /**
+     * Read Heart Rate data
+     */
+    private suspend fun readHeartRateData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        return try {
+            // Samsung Health SDK heart rate API structure differs from steps
+            // Return empty result for now - needs SDK-specific implementation
+            Log.w(TAG, "⚠️ Heart rate data reading not yet fully implemented")
+            HealthDataResult(
+                data = emptyList(),
+                dataSource = "samsung_health_sdk_official",
+                metadata = mapOf("count" to 0, "status" to "not_implemented")
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to read heart rate data", e)
+            null
+        }
+    }
+
+    /**
+     * 所有其他数据类型暂时返回空列表
+     * Samsung Health SDK 每种数据类型的 API 结构都不一样，需要单独实现
+     */
+    private suspend fun readSleepData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?,
+        sleepType: String
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Sleep data ($sleepType) reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented", "sleepType" to sleepType)
+        )
+    }
+
+    private suspend fun readExerciseData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Exercise data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readBloodPressureData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?,
+        pressureType: String
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Blood pressure data ($pressureType) reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented", "pressureType" to pressureType)
+        )
+    }
+
+    private suspend fun readBloodGlucoseData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Blood glucose data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readBloodOxygenData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Blood oxygen data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readBodyTemperatureData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Body temperature data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readSkinTemperatureData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Skin temperature data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    /**
+     * Read User Profile data (height, weight)
+     * 从 UserProfile 读取身高和体重
+     * UserProfile 是用户基础信息,使用 readDataRequestBuilder 读取
+     * 参考: https://developer.samsung.com/health/data/api-reference/-shd/com.samsung.android.sdk.health.data.request/-data-type/-user-profile-data-type/index.html
+     *
+     * 注意：需要从demo代码中确认正确的 API 使用方法
+     * 目前暂时返回空数据，等待查看demo代码
+     */
+    private suspend fun readUserProfileData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?,
+        profileType: String
+    ): HealthDataResult? {
+        return try {
+            Log.d(TAG, "📖 Reading UserProfile data: $profileType")
+            Log.d(TAG, "   💡 Need to check demo code for correct Data object API")
+            Log.d(TAG, "   💡 Creating readRequest...")
+
+            // 创建 UserProfile 读取请求
+            val readRequest = DataTypes.USER_PROFILE.readDataRequestBuilder.build()
+            Log.d(TAG, "   ✅ ReadRequest created successfully")
+
+            // 执行同步读取
+            Log.d(TAG, "   📡 Executing readDataAsync...")
+            val response = store.readDataAsync(readRequest).get()
+            Log.d(TAG, "   ✅ Response received, dataList size: ${response.dataList.size}")
+
+            // 打印response的类型信息来调试
+            Log.d(TAG, "   🔍 Response class: ${response.javaClass.name}")
+            if (response.dataList.isNotEmpty()) {
+                val firstData = response.dataList.first()
+                Log.d(TAG, "   🔍 First data class: ${firstData.javaClass.name}")
+                Log.d(TAG, "   🔍 First data toString: $firstData")
+
+                // 尝试使用反射查看可用方法
+                val methods = firstData.javaClass.methods
+                Log.d(TAG, "   🔍 Available methods count: ${methods.size}")
+                methods.filter { it.name.startsWith("get") }.forEach { method ->
+                    Log.d(TAG, "   🔍 Method: ${method.name}, params: ${method.parameterTypes.map { it.simpleName }}")
+                }
+            }
+
+            // 暂时返回空结果，等待确认正确的API
+            Log.w(TAG, "   ⚠️ Temporarily returning empty result - need demo code to implement correct API")
+
+            HealthDataResult(
+                data = emptyList(),
+                dataSource = "samsung_health_sdk_official",
+                metadata = mapOf(
+                    "count" to 0,
+                    "profileType" to profileType,
+                    "source" to "USER_PROFILE",
+                    "status" to "need_demo_code",
+                    "responseSize" to response.dataList.size
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to read UserProfile data for $profileType", e)
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private suspend fun readBodyCompositionData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?,
+        compositionType: String
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Body composition data ($compositionType) reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented", "compositionType" to compositionType)
+        )
+    }
+
+    private suspend fun readWaterIntakeData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Water intake data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readNutritionData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Nutrition data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readFloorsClimbedData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Floors climbed data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readActivitySummaryData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?,
+        summaryType: String
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Activity summary data ($summaryType) reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented", "summaryType" to summaryType)
+        )
+    }
+
+    private suspend fun readEnergyScoreData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Energy score data reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official", 
+            metadata = mapOf("count" to 0, "status" to "not_implemented")
+        )
+    }
+
+    private suspend fun readGoalData(
+        store: HealthDataStore,
+        start: TimeCompat.LocalDate,
+        end: TimeCompat.LocalDate,
+        limit: Int?,
+        goalType: String
+    ): HealthDataResult? {
+        Log.w(TAG, "⚠️ Goal data ($goalType) reading not yet fully implemented")
+        return HealthDataResult(
+            data = emptyList(),
+            dataSource = "samsung_health_sdk_official",
+            metadata = mapOf("count" to 0, "status" to "not_implemented", "goalType" to goalType)
+        )
+    }
+
+    // ==================== End of Data Reading Helper Methods ====================
 
     override suspend fun writeHealthData(dataMap: Map<String, Any>): Boolean {
         // Writing data to Samsung Health requires specific implementation
@@ -536,8 +916,12 @@ class SamsungHealthProvider(
                 // 10. SKIN_TEMPERATURE - 皮肤温度
                 "skin_temperature" -> Permission.of(DataTypes.SKIN_TEMPERATURE, accessType)
 
-                // 11. BODY_COMPOSITION - 身体成分（体重、身高、体脂、BMI）
-                "height", "weight", "body_fat", "bmi" ->
+                // 11. USER_PROFILE - 用户资料（身高、体重从这里读取）
+                "height", "weight" ->
+                    Permission.of(DataTypes.USER_PROFILE, accessType)
+
+                // 11b. BODY_COMPOSITION - 身体成分（体脂、BMI）
+                "body_fat", "bmi" ->
                     Permission.of(DataTypes.BODY_COMPOSITION, accessType)
 
                 // 12. WATER_INTAKE - 饮水量
