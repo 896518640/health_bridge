@@ -423,6 +423,24 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
     }
   }
 
+  /// 深度转换 Map，处理嵌套的 Map 和 List
+  Map<String, dynamic> _deepConvertMap(Map<dynamic, dynamic> map) {
+    return map.map((key, value) {
+      dynamic convertedValue = value;
+      if (value is Map) {
+        convertedValue = _deepConvertMap(value);
+      } else if (value is List) {
+        convertedValue = value.map((item) {
+          if (item is Map) {
+            return _deepConvertMap(item);
+          }
+          return item;
+        }).toList();
+      }
+      return MapEntry(key.toString(), convertedValue);
+    });
+  }
+
   /// 解析原生返回的结果
   HealthDataResult _parseHealthDataResult(
     Map<String, dynamic> result,
@@ -439,19 +457,17 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
         if (result['data'] != null) {
           final data = result['data'];
           if (data is Map) {
-            // 单个数据项 - 安全转换
-            final dataMap = Map<String, dynamic>.from(data);
+            // 单个数据项 - 深度转换
             dataList.add(HealthData.fromJson({
-              ...dataMap,
+              ..._deepConvertMap(data),
               'platform': platform.key,
             }));
           } else if (data is List) {
             // 多个数据项
             for (final item in data) {
               if (item is Map) {
-                final itemMap = Map<String, dynamic>.from(item);
                 dataList.add(HealthData.fromJson({
-                  ...itemMap,
+                  ..._deepConvertMap(item),
                   'platform': platform.key,
                 }));
               }

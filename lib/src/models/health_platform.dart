@@ -10,7 +10,28 @@ enum HealthDataType {
 
   // === 心血管 ===
   heartRate('heart_rate', 'Heart Rate', 'bpm'),
+
+  /// 血压（复合数据类型）
+  ///
+  /// 返回的数据中 value 为 null，实际数据在 metadata 中：
+  /// - metadata['systolic']: 收缩压
+  /// - metadata['diastolic']: 舒张压
+  ///
+  /// 平台特有字段也会保留在 metadata 中（如华为的脉搏、测量姿势等）
+  bloodPressure('blood_pressure', 'Blood Pressure', 'mmHg'),
+
+  /// 收缩压（废弃）
+  ///
+  /// 此类型已废弃，请使用 [bloodPressure] 代替。
+  /// 从 metadata 中读取：metadata['systolic']
+  @Deprecated('Use bloodPressure instead. Access systolic value via metadata["systolic"]')
   bloodPressureSystolic('blood_pressure_systolic', 'Systolic Blood Pressure', 'mmHg'),
+
+  /// 舒张压（废弃）
+  ///
+  /// 此类型已废弃，请使用 [bloodPressure] 代替。
+  /// 从 metadata 中读取：metadata['diastolic']
+  @Deprecated('Use bloodPressure instead. Access diastolic value via metadata["diastolic"]')
   bloodPressureDiastolic('blood_pressure_diastolic', 'Diastolic Blood Pressure', 'mmHg'),
 
   // === 身体指标 ===
@@ -403,7 +424,7 @@ const List<PlatformCapability> _googleFitCapabilities = [
 /// 注意：华为Health Kit仅支持3种数据类型的读取权限
 /// - 步数 (steps)
 /// - 血糖 (glucose)
-/// - 血压 (blood_pressure_systolic, blood_pressure_diastolic)
+/// - 血压 (bloodPressure) - 复合数据，包含收缩压和舒张压
 const List<PlatformCapability> _huaweiHealthCapabilities = [
   // 步数
   PlatformCapability(
@@ -422,19 +443,12 @@ const List<PlatformCapability> _huaweiHealthCapabilities = [
     notes: 'Read-only support, requires manual review approval',
   ),
 
-  // 血压
+  // 血压（统一类型）
   PlatformCapability(
-    dataType: HealthDataType.bloodPressureSystolic,
+    dataType: HealthDataType.bloodPressure,
     canRead: true,
     canWrite: false,
     requiresSpecialPermission: true,
-    notes: 'Read-only support, requires manual review approval',
-  ),
-  PlatformCapability(
-    dataType: HealthDataType.bloodPressureDiastolic,
-    canRead: true,
-    canWrite: false,
-    requiresSpecialPermission: true,
-    notes: 'Read-only support, requires manual review approval',
+    notes: 'Read-only support, requires manual review approval. Returns both systolic and diastolic values in metadata.',
   ),
 ];

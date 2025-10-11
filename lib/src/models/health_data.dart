@@ -4,7 +4,7 @@ import 'health_platform.dart';
 class HealthData {
   const HealthData({
     required this.type,
-    required this.value,
+    this.value,
     required this.timestamp,
     required this.unit,
     required this.platform,
@@ -15,8 +15,15 @@ class HealthData {
   /// 数据类型
   final HealthDataType type;
 
-  /// 数据值
-  final double value;
+  /// 数据值（简单数值型数据）
+  ///
+  /// 对于简单数值型数据（如步数、心率、体重等），此字段包含实际值。
+  /// 对于复合型数据（如血压），此字段为 null，实际数据存储在 [metadata] 中。
+  ///
+  /// 示例：
+  /// - 步数: value = 10000
+  /// - 血压: value = null, metadata = {'systolic': 128, 'diastolic': 88}
+  final double? value;
 
   /// 时间戳 (毫秒)
   final int timestamp;

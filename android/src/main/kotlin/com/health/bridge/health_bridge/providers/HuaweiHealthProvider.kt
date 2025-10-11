@@ -51,20 +51,21 @@ class HuaweiHealthProvider(
      * ⚠️ 重要：华为Health仅支持3种数据类型的读取
      * - 步数 (steps)
      * - 血糖 (glucose)
-     * - 血压 (blood_pressure_systolic, blood_pressure_diastolic)
+     * - 血压 (blood_pressure) - 复合数据，包含收缩压和舒张压
      *
      * 注意：使用HealthDataTypes类来访问血糖和血压数据类型
      */
     private val dataTypeMapping = mapOf(
-        // === 华为Health Kit 支持的3种数据类型（只读） ===
-
         // 步数
         "steps" to DataType.DT_CONTINUOUS_STEPS_DELTA,
 
         // 血糖
         "glucose" to HealthDataTypes.DT_INSTANTANEOUS_BLOOD_GLUCOSE,
 
-        // 血压（收缩压和舒张压使用相同的DataType）
+        // 血压（统一类型，返回复合数据）
+        "blood_pressure" to HealthDataTypes.DT_INSTANTANEOUS_BLOOD_PRESSURE,
+
+        // 兼容旧类型（内部映射到统一的血压类型）
         "blood_pressure_systolic" to HealthDataTypes.DT_INSTANTANEOUS_BLOOD_PRESSURE,
         "blood_pressure_diastolic" to HealthDataTypes.DT_INSTANTANEOUS_BLOOD_PRESSURE
     )
@@ -402,6 +403,11 @@ class HuaweiHealthProvider(
     /**
      * 映射数据类型到Scope
      * 注意：只申请读权限，不申请写权限
+     * 目前只实现了: 
+     * - 步数
+     * - 血糖
+     * - 血压
+     * 以上三种数据类型需要申请权限
      */
     private fun mapDataTypeToScope(dataType: String, operation: String): String? {
         // 只支持读操作
@@ -413,7 +419,8 @@ class HuaweiHealthProvider(
         return when (dataType) {
             "steps" -> Scopes.HEALTHKIT_STEP_READ
             "glucose" -> Scopes.HEALTHKIT_BLOODGLUCOSE_READ
-            "blood_pressure_systolic", "blood_pressure_diastolic" -> Scopes.HEALTHKIT_BLOODPRESSURE_READ
+            "blood_pressure", "blood_pressure_systolic", "blood_pressure_diastolic" ->
+                Scopes.HEALTHKIT_BLOODPRESSURE_READ
             else -> {
                 Log.w(TAG, "⚠️ Unsupported data type for Huawei Health: $dataType")
                 null
@@ -471,15 +478,12 @@ class HuaweiHealthProvider(
 
     /**
      * 读取健康数据（通用方法）
-     * 参考 Demo 优化读取逻辑
      *
      * 华为 Health Kit 限制：
-     * - 错误码 50059 = QUERY_TIME_EXCEED_LIMIT：单次查询不超过 31 天
-     * - 错误码 50065 = HISTORY_PERMISSIONS_INSUFFICIENT：历史数据权限不足
+     * - 错误码 50059：单次查询不超过 31 天
+     * - 错误码 50065：历史数据权限不足
      *
-     * 注意：默认只能查询最近的数据，如果需要查询历史数据，可能需要：
-     * 1. 申请特殊的历史数据权限
-     * 2. 限制查询范围在允许的时间内（建议最近 7 天）
+     * 所有数据类型都会返回完整的 SDK 原始数据在 metadata 中
      */
     override suspend fun readHealthData(
         dataType: String,
@@ -490,310 +494,35 @@ class HuaweiHealthProvider(
         try {
             Log.d(TAG, "📖 Reading health data: $dataType")
 
-            // ⭐ 关键改进：在读取数据前检查权限
+            // 1. 检查权限
             if (!checkHealthAppAuthorization()) {
-                Log.e(TAG, "❌ Cannot read data: Health App not authorized")
-                Log.e(TAG, "   Please call requestPermissions() and wait for user to grant permission")
+                Log.e(TAG, "❌ Health App not authorized")
                 return@withContext null
             }
 
+            // 2. 获取 DataType
             val huaweiDataType = dataTypeMapping[dataType]
             if (huaweiDataType == null) {
                 Log.w(TAG, "⚠️ Unsupported data type: $dataType")
                 return@withContext null
             }
 
-            val now = TimeCompat.LocalDate.now()
-            var start = startDate ?: now
-            var end = endDate ?: now  // 默认使用今天，而不是 start
+            // 3. 计算时间范围（处理30天限制）
+            val (actualStartTime, actualEndTime, adjustedStart, adjustedEnd) =
+                calculateTimeRange(startDate, endDate)
 
-            // ⚠️ 华为限制：
-            // 1. 单次查询时间范围不能超过 31 天
-            // 2. 历史数据访问需要额外权限（HISTORYDATA_OPEN_WEEK/MONTH/YEAR）
-            //    - WEEK: 可查询授权前7天的数据
-            //    - MONTH: 可查询授权前30天的数据
-            //    - YEAR: 可查询授权前1年的数据
-            // 3. 如果没有申请历史数据权限，只能查询授权后的数据
-            val javaStart = LocalDate.of(start.year, start.month, start.dayOfMonth)
-            val javaEnd = LocalDate.of(end.year, end.month, end.dayOfMonth)
-            val javaToday = LocalDate.now()
+            // 4. 执行读取请求
+            val readReply = executeReadRequest(huaweiDataType, actualStartTime, actualEndTime, dataType)
 
-            // 计算天数差
-            val daysDiff = java.time.temporal.ChronoUnit.DAYS.between(javaStart, javaEnd)
-            val daysFromToday = java.time.temporal.ChronoUnit.DAYS.between(javaStart, javaToday)
+            // 5. 处理数据 - 根据类型分发
+            val dataList = processHealthDataSamples(
+                dataType,
+                huaweiDataType,
+                readReply.sampleSets,
+                limit
+            )
 
-            Log.d(TAG, "   Original date range: $javaStart to $javaEnd ($daysDiff days)")
-            Log.d(TAG, "   Days from today: $daysFromToday")
-
-            val actualStartTime: Long
-            val actualEndTime: Long
-
-            // 检查查询跨度限制（严格限制在30天以内，避免50059错误）
-            if (daysDiff >= 30) {
-                Log.w(TAG, "⚠️ Query time range ($daysDiff days) exceeds 30-day limit")
-                Log.w(TAG, "   Adjusting to most recent 28 days for safety")
-                val adjustedStart = javaEnd.minusDays(28)
-                actualStartTime = adjustedStart.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                actualEndTime = javaEnd.atTime(23, 59, 59, 999_000_000)
-                    .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                start = TimeCompat.LocalDate(adjustedStart.year, adjustedStart.monthValue, adjustedStart.dayOfMonth)
-                Log.d(TAG, "   Adjusted range: $adjustedStart to $javaEnd")
-            } else {
-                actualStartTime = javaStart.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                actualEndTime = javaEnd.atTime(23, 59, 59, 999_000_000)
-                    .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-                // 如果查询历史数据（7天前），给出提示
-                if (daysFromToday > 7) {
-                    Log.i(TAG, "   ℹ️ Querying historical data from $daysFromToday days ago")
-                    Log.i(TAG, "   Make sure HEALTHKIT_HISTORYDATA_OPEN_WEEK permission is granted")
-                }
-            }
-
-            // 计算实际的毫秒跨度
-            val actualDaysSpan = (actualEndTime - actualStartTime) / (1000 * 60 * 60 * 24)
-            Log.d(TAG, "   Actual time range: $actualStartTime - $actualEndTime ($actualDaysSpan days in milliseconds)")
-
-            // ⭐ 关键改进：直接使用 DataType 读取，不使用 DataCollector
-            val readOptions = ReadOptions.Builder()
-                .read(huaweiDataType)  // 直接传 DataType
-                .setTimeRange(actualStartTime, actualEndTime, TimeUnit.MILLISECONDS)
-                .build()
-
-            Log.d(TAG, "📡 Executing read request...")
-            val readReply = suspendCoroutine<com.huawei.hms.hihealth.result.ReadReply> { continuation ->
-                dataController!!.read(readOptions)
-                    .addOnSuccessListener {
-                        Log.d(TAG, "✅ Read success for $dataType, sampleSets: ${it.sampleSets.size}")
-                        continuation.resume(it)
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "❌ Read failed for $dataType: ${e.message}", e)
-                        continuation.resumeWithException(e)
-                    }
-            }
-
-            val dataList = mutableListOf<Map<String, Any>>()
-            val field = fieldMapping[dataType]
-
-            if (field == null) {
-                Log.w(TAG, "⚠️ 数据类型 $dataType 没有预定义的字段映射，将从 DataType 中动态获取")
-
-                // 打印 DataType 的所有可用字段
-                Log.d(TAG, "📋 DataType '${huaweiDataType.name}' 包含 ${huaweiDataType.fields.size} 个字段:")
-                huaweiDataType.fields.forEachIndexed { index, f ->
-                    Log.d(TAG, "   字段[$index]: name='${f.name}', format=${f.format}")
-                }
-
-                // 特殊处理：血压数据包含收缩压和舒张压两个字段
-                if (dataType == "blood_pressure_systolic" || dataType == "blood_pressure_diastolic") {
-                    Log.d(TAG, "🩺 血压数据特殊处理...")
-                    Log.d(TAG, "   请求的数据类型: $dataType")
-
-                    // 查找收缩压和舒张压字段
-                    // 华为SDK中，字段名可能是 "systolic" 和 "diastolic" 或类似名称
-                    val systolicField = huaweiDataType.fields.find {
-                        it.name.contains("systolic", ignoreCase = true) ||
-                        it.name.contains("sbp", ignoreCase = true) ||
-                        it.name.contains("收缩", ignoreCase = true)
-                    }
-                    val diastolicField = huaweiDataType.fields.find {
-                        it.name.contains("diastolic", ignoreCase = true) ||
-                        it.name.contains("dbp", ignoreCase = true) ||
-                        it.name.contains("舒张", ignoreCase = true)
-                    }
-
-                    Log.d(TAG, "   找到收缩压字段: ${systolicField?.name ?: "未找到"}")
-                    Log.d(TAG, "   找到舒张压字段: ${diastolicField?.name ?: "未找到"}")
-
-                    // 根据请求的类型选择对应的字段
-                    val targetField = if (dataType == "blood_pressure_systolic") {
-                        systolicField
-                    } else {
-                        diastolicField
-                    }
-
-                    if (targetField == null) {
-                        Log.e(TAG, "❌ 无法找到对应的血压字段!")
-                        return@withContext null
-                    }
-
-                    Log.d(TAG, "✅ 使用字段: ${targetField.name}")
-                    Log.d(TAG, "🔍 处理 ${readReply.sampleSets.size} 个 SampleSet...")
-
-                    for (sampleSet in readReply.sampleSets) {
-                        Log.d(TAG, "   📦 SampleSet 包含 ${sampleSet.samplePoints.size} 个数据点")
-                        for (sample in sampleSet.samplePoints) {
-                            // 打印 SamplePoint 的完整元数据
-                            Log.d(TAG, "   ═══════════════════════════════════════")
-                            Log.d(TAG, "   📊 SamplePoint 元数据:")
-                            Log.d(TAG, "      DataType: ${sample.dataType.name}")
-                            Log.d(TAG, "      开始时间: ${sample.getStartTime(TimeUnit.MILLISECONDS)}")
-                            Log.d(TAG, "      结束时间: ${sample.getEndTime(TimeUnit.MILLISECONDS)}")
-                            Log.d(TAG, "      采样时间: ${sample.getSamplingTime(TimeUnit.MILLISECONDS)}")
-
-                            // 打印所有字段的值
-                            Log.d(TAG, "      所有字段值:")
-                            huaweiDataType.fields.forEach { field ->
-                                try {
-                                    val fieldValue = when (field.format) {
-                                        Field.FORMAT_INT32 -> sample.getFieldValue(field).asIntValue()
-                                        Field.FORMAT_LONG -> sample.getFieldValue(field).asLongValue()
-                                        Field.FORMAT_FLOAT -> sample.getFieldValue(field).asFloatValue()
-                                        Field.FORMAT_STRING -> {
-                                            try {
-                                                sample.getFieldValue(field).asStringValue()
-                                            } catch (e: Exception) {
-                                                "<无数据>"
-                                            }
-                                        }
-                                        else -> "<未知格式:${field.format}>"
-                                    }
-                                    Log.d(TAG, "         ${field.name} = $fieldValue (format=${field.format})")
-                                } catch (e: Exception) {
-                                    Log.d(TAG, "         ${field.name} = <无数据> (${e.message})")
-                                }
-                            }
-
-                            // 打印 SampleSet 的 DataCollector 信息
-                            try {
-                                Log.d(TAG, "      DataCollector 信息:")
-                                val collector = sampleSet.dataCollector
-                                if (collector != null) {
-                                    Log.d(TAG, "         DataType: ${collector.dataType?.name ?: "N/A"}")
-                                    Log.d(TAG, "         DataStreamName: ${collector.dataStreamName ?: "N/A"}")
-                                } else {
-                                    Log.d(TAG, "         DataCollector: null")
-                                }
-                            } catch (e: Exception) {
-                                Log.d(TAG, "      DataCollector 信息读取失败: ${e.message}")
-                            }
-                            Log.d(TAG, "   ═══════════════════════════════════════")
-
-                            val value = when (targetField.format) {
-                                Field.FORMAT_INT32 -> sample.getFieldValue(targetField).asIntValue().toDouble()
-                                Field.FORMAT_LONG -> sample.getFieldValue(targetField).asLongValue().toDouble()
-                                Field.FORMAT_FLOAT -> sample.getFieldValue(targetField).asFloatValue().toDouble()
-                                else -> 0.0
-                            }
-
-                            val timestamp = sample.getStartTime(TimeUnit.MILLISECONDS)
-                            Log.d(TAG, "   📍 数据点: 值=$value ${getUnitForDataType(dataType)}, 时间戳=$timestamp")
-
-                            // 如果是血压数据，额外打印另一个字段的值用于调试
-                            if (dataType == "blood_pressure_systolic" && diastolicField != null) {
-                                val diastolicValue = when (diastolicField.format) {
-                                    Field.FORMAT_INT32 -> sample.getFieldValue(diastolicField).asIntValue().toDouble()
-                                    Field.FORMAT_LONG -> sample.getFieldValue(diastolicField).asLongValue().toDouble()
-                                    Field.FORMAT_FLOAT -> sample.getFieldValue(diastolicField).asFloatValue().toDouble()
-                                    else -> 0.0
-                                }
-                                Log.d(TAG, "      (同一记录的舒张压值: $diastolicValue mmHg)")
-                            } else if (dataType == "blood_pressure_diastolic" && systolicField != null) {
-                                val systolicValue = when (systolicField.format) {
-                                    Field.FORMAT_INT32 -> sample.getFieldValue(systolicField).asIntValue().toDouble()
-                                    Field.FORMAT_LONG -> sample.getFieldValue(systolicField).asLongValue().toDouble()
-                                    Field.FORMAT_FLOAT -> sample.getFieldValue(systolicField).asFloatValue().toDouble()
-                                    else -> 0.0
-                                }
-                                Log.d(TAG, "      (同一记录的收缩压值: $systolicValue mmHg)")
-                            }
-
-                            dataList.add(
-                                mapOf(
-                                    "type" to dataType,
-                                    "value" to value,
-                                    "timestamp" to timestamp,
-                                    "unit" to getUnitForDataType(dataType),
-                                    "platform" to platformKey
-                                )
-                            )
-
-                            if (limit != null && dataList.size >= limit) break
-                        }
-                        if (limit != null && dataList.size >= limit) break
-                    }
-                } else {
-                    // 其他数据类型：使用第一个字段
-                    val defaultField = huaweiDataType.fields.firstOrNull()
-                    if (defaultField == null) {
-                        Log.e(TAG, "❌ DataType 没有可用字段!")
-                        return@withContext null
-                    }
-
-                    Log.d(TAG, "✅ 使用默认字段: ${defaultField.name}")
-                    Log.d(TAG, "🔍 处理 ${readReply.sampleSets.size} 个 SampleSet...")
-
-                    for (sampleSet in readReply.sampleSets) {
-                        Log.d(TAG, "   📦 SampleSet 包含 ${sampleSet.samplePoints.size} 个数据点")
-                        for (sample in sampleSet.samplePoints) {
-                            val value = when (defaultField.format) {
-                                Field.FORMAT_INT32 -> sample.getFieldValue(defaultField).asIntValue().toDouble()
-                                Field.FORMAT_LONG -> sample.getFieldValue(defaultField).asLongValue().toDouble()
-                                Field.FORMAT_FLOAT -> sample.getFieldValue(defaultField).asFloatValue().toDouble()
-                                Field.FORMAT_STRING -> 0.0  // String 类型暂不支持
-                                Field.FORMAT_MAP -> 0.0  // Map 类型暂不支持
-                                else -> 0.0
-                            }
-
-                            val timestamp = sample.getStartTime(TimeUnit.MILLISECONDS)
-                            Log.d(TAG, "   📍 数据点: 值=$value ${getUnitForDataType(dataType)}, 时间戳=$timestamp")
-
-                            dataList.add(
-                                mapOf(
-                                    "type" to dataType,
-                                    "value" to value,
-                                    "timestamp" to timestamp,
-                                    "unit" to getUnitForDataType(dataType),
-                                    "platform" to platformKey
-                                )
-                            )
-
-                            if (limit != null && dataList.size >= limit) break
-                        }
-                        if (limit != null && dataList.size >= limit) break
-                    }
-                }
-            } else {
-                Log.d(TAG, "🔍 Processing ${readReply.sampleSets.size} sampleSets with field: ${field.name}...")
-                for (sampleSet in readReply.sampleSets) {
-                    Log.d(TAG, "   SampleSet has ${sampleSet.samplePoints.size} points")
-                    for (sample in sampleSet.samplePoints) {
-                        // TODO: 血压数据特殊处理 - 暂时注释,因为Field常量不存在
-                        /*
-                        // ⭐ 特殊处理：血压数据包含收缩压和舒张压两个值
-                        if (dataType == "systolic_blood_pressure" || dataType == "diastolic_blood_pressure") {
-                            ...
-                        } else {
-                        */
-                            // 其他数据类型的正常处理
-                            val value = when (field.format) {
-                                Field.FORMAT_INT32 -> sample.getFieldValue(field).asIntValue().toDouble()
-                                Field.FORMAT_LONG -> sample.getFieldValue(field).asLongValue().toDouble()
-                                Field.FORMAT_FLOAT -> sample.getFieldValue(field).asFloatValue().toDouble()
-                                else -> 0.0
-                            }
-
-                            Log.d(TAG, "   📍 Value: $value at ${sample.getStartTime(TimeUnit.MILLISECONDS)}")
-
-                            dataList.add(
-                                mapOf(
-                                    "type" to dataType,
-                                    "value" to value,
-                                    "timestamp" to sample.getStartTime(TimeUnit.MILLISECONDS),
-                                    "unit" to getUnitForDataType(dataType),
-                                    "platform" to platformKey
-                                )
-                            )
-                        // }
-
-                        if (limit != null && dataList.size >= limit) break
-                    }
-                    if (limit != null && dataList.size >= limit) break
-                }
-            }
-
-            Log.d(TAG, "✅ Successfully read ${dataList.size} data points for $dataType")
+            Log.d(TAG, "✅ 成功读取 ${dataList.size} 条数据 : $dataType")
 
             HealthDataResult(
                 data = dataList,
@@ -801,25 +530,131 @@ class HuaweiHealthProvider(
                 metadata = mapOf(
                     "count" to dataList.size,
                     "dataType" to dataType,
-                    "startDate" to start.toString(),
-                    "endDate" to end.toString()
+                    "startDate" to adjustedStart.toString(),
+                    "endDate" to adjustedEnd.toString()
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error reading health data for $dataType", e)
-            Log.e(TAG, "   Error type: ${e.javaClass.simpleName}")
-            Log.e(TAG, "   Error message: ${e.message}")
+            Log.e(TAG, "❌ 读取健康数据失败: $dataType", e)
+            Log.e(TAG, "   Error: ${e.javaClass.simpleName} - ${e.message}")
             e.printStackTrace()
             null
         }
     }
 
     /**
+     * 计算实际查询时间范围（处理华为30天限制）
+     */
+    private fun calculateTimeRange(
+        startDate: TimeCompat.LocalDate?,
+        endDate: TimeCompat.LocalDate?
+    ): TimeRangeResult {
+        val now = TimeCompat.LocalDate.now()
+        var start = startDate ?: now
+        var end = endDate ?: now
+
+        val javaStart = LocalDate.of(start.year, start.month, start.dayOfMonth)
+        val javaEnd = LocalDate.of(end.year, end.month, end.dayOfMonth)
+        val daysDiff = java.time.temporal.ChronoUnit.DAYS.between(javaStart, javaEnd)
+
+        Log.d(TAG, "   Date range: $javaStart to $javaEnd ($daysDiff days)")
+
+        // 如果超过30天限制，调整为最近28天
+        val (adjustedJavaStart, adjustedJavaEnd) = if (daysDiff >= 30) {
+            Log.w(TAG, "⚠️ Range exceeds 30-day limit, adjusting to 28 days")
+            val adjusted = javaEnd.minusDays(28)
+            start = TimeCompat.LocalDate(adjusted.year, adjusted.monthValue, adjusted.dayOfMonth)
+            Pair(adjusted, javaEnd)
+        } else {
+            Pair(javaStart, javaEnd)
+        }
+
+        val startTime = adjustedJavaStart.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endTime = adjustedJavaEnd.atTime(23, 59, 59, 999_000_000)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        return TimeRangeResult(startTime, endTime, start, end)
+    }
+
+    /**
+     * 执行读取请求
+     */
+    private suspend fun executeReadRequest(
+        huaweiDataType: DataType,
+        startTime: Long,
+        endTime: Long,
+        dataType: String
+    ): com.huawei.hms.hihealth.result.ReadReply {
+        val readOptions = ReadOptions.Builder()
+            .read(huaweiDataType)
+            .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
+            .build()
+
+        Log.d(TAG, "📡 Executing read request...")
+        return suspendCoroutine { continuation ->
+            dataController!!.read(readOptions)
+                .addOnSuccessListener {
+                    Log.d(TAG, "✅ 读取成功: $dataType, sampleSets: ${it.sampleSets.size}")
+                    continuation.resume(it)
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "❌ 读取失败: $dataType: ${e.message}", e)
+                    continuation.resumeWithException(e)
+                }
+        }
+    }
+
+    /**
+     * 处理健康数据样本
+     */
+    private fun processHealthDataSamples(
+        dataType: String,
+        huaweiDataType: DataType,
+        sampleSets: List<SampleSet>,
+        limit: Int?
+    ): List<Map<String, Any?>> {
+        val dataList = mutableListOf<Map<String, Any?>>()
+
+        Log.d(TAG, "🔍 处理 ${sampleSets.size} 个 SampleSets...")
+
+        for (sampleSet in sampleSets) {
+            for (sample in sampleSet.samplePoints) {
+                // 根据数据类型分发处理
+                val healthData = if (isBloodPressureType(dataType)) {
+                    processBloodPressureData(dataType, sample, huaweiDataType, sampleSet)
+                } else {
+                    processSimpleHealthData(dataType, sample, huaweiDataType, sampleSet)
+                }
+
+                dataList.add(healthData)
+
+                // 检查数量限制
+                if (limit != null && dataList.size >= limit) {
+                    Log.d(TAG, "  达到限制: $limit")
+                    return dataList
+                }
+            }
+        }
+
+        return dataList
+    }
+
+    /**
+     * 时间范围计算结果
+     */
+    private data class TimeRangeResult(
+        val startTime: Long,
+        val endTime: Long,
+        val startDate: TimeCompat.LocalDate,
+        val endDate: TimeCompat.LocalDate
+    )
+
+    /**
      * 写入健康数据
      * 注意：华为Health Kit不支持写入操作，直接返回false
      */
     override suspend fun writeHealthData(dataMap: Map<String, Any>): Boolean = withContext(Dispatchers.IO) {
-        Log.w(TAG, "⚠️ Huawei Health Kit does not support write operations")
+        Log.w(TAG, "⚠️ Huawei Health Kit 写入权限功能开发中...")
         return@withContext false
     }
 
@@ -828,7 +663,7 @@ class HuaweiHealthProvider(
      * 注意：华为Health Kit不支持写入操作，直接返回false
      */
     override suspend fun writeBatchHealthData(dataList: List<Map<String, Any>>): Boolean {
-        Log.w(TAG, "⚠️ Huawei Health Kit does not support write operations")
+        Log.w(TAG, "⚠️ Huawei Health Kit 写入权限功能开发中...")
         return false
     }
 
@@ -869,7 +704,7 @@ class HuaweiHealthProvider(
         settingController = null
         dataController = null
         isInitialized = false
-        Log.d(TAG, "Huawei Health Kit cleaned up")
+        Log.d(TAG, "Huawei Health Kit 清理完成")
     }
 
     /**
@@ -879,9 +714,200 @@ class HuaweiHealthProvider(
         return when (dataType) {
             "steps" -> "steps"
             "glucose" -> "mmol/L"
-            "blood_pressure_systolic", "blood_pressure_diastolic" -> "mmHg"
+            "blood_pressure", "blood_pressure_systolic", "blood_pressure_diastolic" -> "mmHg"
             else -> ""
         }
+    }
+
+    /**
+     * 构建完整的 metadata（包含所有 SDK 原始字段）
+     *
+     * 所有数据类型都会返回完整的 SDK 原始数据，包括：
+     * 1. 所有字段的原始值（保持 SDK 原始命名）
+     * 2. 时间信息（startTime, endTime, samplingTime）
+     * 3. DataType 信息
+     */
+    private fun buildCompleteMetadata(
+        sample: com.huawei.hms.hihealth.data.SamplePoint,
+        huaweiDataType: DataType,
+        sampleSet: SampleSet
+    ): MutableMap<String, Any> {
+        val metadata = mutableMapOf<String, Any>()
+
+        // 1. 添加所有字段的原始值（保持 SDK 原始命名）
+        huaweiDataType.fields.forEach { field ->
+            try {
+                val value: Any? = when (field.format) {
+                    Field.FORMAT_INT32 -> sample.getFieldValue(field).asIntValue()
+                    Field.FORMAT_LONG -> sample.getFieldValue(field).asLongValue()
+                    Field.FORMAT_FLOAT -> sample.getFieldValue(field).asFloatValue()
+                    Field.FORMAT_STRING -> {
+                        try {
+                            sample.getFieldValue(field).asStringValue()
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    else -> null
+                }
+
+                if (value != null) {
+                    metadata[field.name] = value
+                }
+            } catch (e: Exception) {
+                // 字段可能没有值，跳过
+            }
+        }
+
+        // 2. 添加时间信息
+        metadata["startTime"] = sample.getStartTime(TimeUnit.MILLISECONDS)
+        metadata["endTime"] = sample.getEndTime(TimeUnit.MILLISECONDS)
+        metadata["samplingTime"] = sample.getSamplingTime(TimeUnit.MILLISECONDS)
+
+        // 3. 添加 DataType 信息
+        metadata["dataType"] = sample.dataType.name
+
+        return metadata
+    }
+
+    /**
+     * 判断数据类型是否为血压相关
+     */
+    private fun isBloodPressureType(dataType: String): Boolean {
+        return dataType == "blood_pressure" ||
+               dataType == "blood_pressure_systolic" ||
+               dataType == "blood_pressure_diastolic"
+    }
+
+    /**
+     * 处理血压数据（复合数据类型）
+     *
+     * 血压数据包含收缩压和舒张压两个值，统一处理后返回标准格式。
+     *
+     * @param dataType 请求的数据类型（blood_pressure/blood_pressure_systolic/blood_pressure_diastolic）
+     * @param sample SamplePoint
+     * @param huaweiDataType 华为 DataType
+     * @param sampleSet SampleSet
+     * @return 标准格式的 Map
+     */
+    private fun processBloodPressureData(
+        dataType: String,
+        sample: com.huawei.hms.hihealth.data.SamplePoint,
+        huaweiDataType: DataType,
+        sampleSet: SampleSet
+    ): Map<String, Any?> {
+        // 查找收缩压和舒张压字段
+        val systolicField = huaweiDataType.fields.find {
+            it.name.contains("systolic", ignoreCase = true)
+        }
+        val diastolicField = huaweiDataType.fields.find {
+            it.name.contains("diastolic", ignoreCase = true)
+        }
+
+        if (systolicField == null || diastolicField == null) {
+            Log.e(TAG, "❌ 无法找到血压字段！systolic=$systolicField, diastolic=$diastolicField")
+            throw IllegalStateException("Blood pressure fields not found")
+        }
+
+        // 获取收缩压和舒张压的值
+        val systolicValue = when (systolicField.format) {
+            Field.FORMAT_INT32 -> sample.getFieldValue(systolicField).asIntValue().toDouble()
+            Field.FORMAT_LONG -> sample.getFieldValue(systolicField).asLongValue().toDouble()
+            Field.FORMAT_FLOAT -> sample.getFieldValue(systolicField).asFloatValue().toDouble()
+            else -> 0.0
+        }
+
+        val diastolicValue = when (diastolicField.format) {
+            Field.FORMAT_INT32 -> sample.getFieldValue(diastolicField).asIntValue().toDouble()
+            Field.FORMAT_LONG -> sample.getFieldValue(diastolicField).asLongValue().toDouble()
+            Field.FORMAT_FLOAT -> sample.getFieldValue(diastolicField).asFloatValue().toDouble()
+            else -> 0.0
+        }
+
+        // 构建完整的 metadata（包含所有 SDK 原始字段）
+        val metadata = buildCompleteMetadata(sample, huaweiDataType, sampleSet)
+
+        // 添加标准化字段（跨平台统一）
+        metadata["systolic"] = systolicValue
+        metadata["diastolic"] = diastolicValue
+
+        // 根据请求的类型决定返回格式
+        return when (dataType) {
+            "blood_pressure" -> {
+                // 统一的血压类型：value 为 null，数据在 metadata 中
+                mapOf<String, Any?>(
+                    "type" to dataType,
+                    "value" to null,  // 复合数据，value 为 null
+                    "timestamp" to sample.getStartTime(TimeUnit.MILLISECONDS),
+                    "unit" to "mmHg",
+                    "platform" to platformKey,
+                    "metadata" to metadata
+                )
+            }
+            "blood_pressure_systolic" -> {
+                // 兼容旧类型：返回收缩压值
+                mapOf(
+                    "type" to dataType,
+                    "value" to systolicValue,
+                    "timestamp" to sample.getStartTime(TimeUnit.MILLISECONDS),
+                    "unit" to "mmHg",
+                    "platform" to platformKey,
+                    "metadata" to metadata
+                )
+            }
+            "blood_pressure_diastolic" -> {
+                // 兼容旧类型：返回舒张压值
+                mapOf(
+                    "type" to dataType,
+                    "value" to diastolicValue,
+                    "timestamp" to sample.getStartTime(TimeUnit.MILLISECONDS),
+                    "unit" to "mmHg",
+                    "platform" to platformKey,
+                    "metadata" to metadata
+                )
+            }
+            else -> throw IllegalArgumentException("Unknown blood pressure type: $dataType")
+        }
+    }
+
+    /**
+     * 处理简单数值型数据（如步数、血糖等）
+     *
+     * @param dataType 数据类型
+     * @param sample SamplePoint
+     * @param huaweiDataType 华为 DataType
+     * @param sampleSet SampleSet
+     * @return 标准格式的 Map
+     */
+    private fun processSimpleHealthData(
+        dataType: String,
+        sample: com.huawei.hms.hihealth.data.SamplePoint,
+        huaweiDataType: DataType,
+        sampleSet: SampleSet
+    ): Map<String, Any> {
+        // 获取主值字段（使用第一个字段）
+        val primaryField = huaweiDataType.fields.firstOrNull()
+            ?: throw IllegalStateException("DataType has no fields")
+
+        // 获取主值
+        val primaryValue = when (primaryField.format) {
+            Field.FORMAT_INT32 -> sample.getFieldValue(primaryField).asIntValue().toDouble()
+            Field.FORMAT_LONG -> sample.getFieldValue(primaryField).asLongValue().toDouble()
+            Field.FORMAT_FLOAT -> sample.getFieldValue(primaryField).asFloatValue().toDouble()
+            else -> 0.0
+        }
+
+        // 构建完整的 metadata（包含所有 SDK 原始字段）
+        val metadata = buildCompleteMetadata(sample, huaweiDataType, sampleSet)
+
+        return mapOf(
+            "type" to dataType,
+            "value" to primaryValue,
+            "timestamp" to sample.getStartTime(TimeUnit.MILLISECONDS),
+            "unit" to getUnitForDataType(dataType),
+            "platform" to platformKey,
+            "metadata" to metadata
+        )
     }
 
     /**

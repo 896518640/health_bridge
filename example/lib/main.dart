@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:health_bridge/health_bridge.dart';
+import 'pages/health_data_detail_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -349,8 +350,16 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
           _showInfo('${dataType.displayName}: 无数据');
         } else {
           _showSuccess('${dataType.displayName}: 读取到 ${result.data.length} 条数据');
-          // 显示数据详情
-          _showDataDetailDialog(dataType, result.data);
+          // 跳转到数据详情页面
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => HealthDataDetailPage(
+                dataType: dataType,
+                dataList: result.data,
+                platform: _selectedPlatform!,
+              ),
+            ),
+          );
         }
       } else {
         _showError('${dataType.displayName} 读取失败: ${result.message}');
@@ -360,94 +369,6 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
     } finally {
       setState(() => _isLoading = false);
     }
-  }
-
-  /// 显示数据详情对话框
-  void _showDataDetailDialog(HealthDataType dataType, List<HealthData> dataList) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
-            maxWidth: MediaQuery.of(context).size.width * 0.9,
-          ),
-          child: Column(
-            children: [
-              // 标题栏
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    topRight: Radius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            dataType.displayName,
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '共 ${dataList.length} 条数据',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              // 数据列表
-              Expanded(
-                child: ListView.builder(
-                  itemCount: dataList.length,
-                  itemBuilder: (context, index) {
-                    final data = dataList[index];
-                    final time = DateTime.fromMillisecondsSinceEpoch(data.timestamp);
-                    return ListTile(
-                      leading: CircleAvatar(
-                        child: Text('${index + 1}'),
-                      ),
-                      title: Text(
-                        '${data.value} ${data.unit}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '时间: ${time.year}-${time.month.toString().padLeft(2, '0')}-${time.day.toString().padLeft(2, '0')} '
-                            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-                          ),
-                          if (data.source != null)
-                            Text('来源: ${data.source}'),
-                        ],
-                      ),
-                      dense: true,
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   /// 写入健康数据（示例值）
@@ -1257,7 +1178,17 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
                           tooltip: '读取${type.displayName}',
                         ),
                         onTap: hasData
-                            ? () => _showDataDetailDialog(type, dataList)
+                            ? () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => HealthDataDetailPage(
+                                      dataType: type,
+                                      dataList: dataList,
+                                      platform: _selectedPlatform!,
+                                    ),
+                                  ),
+                                );
+                              }
                             : null,
                       ),
                     );

@@ -114,7 +114,7 @@ data class StepData(
  * 健康数据查询结果
  */
 data class HealthDataResult(
-    val data: List<Map<String, Any>>,
+    val data: List<Map<String, Any?>>,
     val dataSource: String,
     val metadata: Map<String, Any> = emptyMap()
 )
