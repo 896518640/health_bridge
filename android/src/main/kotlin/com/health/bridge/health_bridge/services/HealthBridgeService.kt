@@ -355,13 +355,30 @@ class HealthBridgeService(context: Context) {
             val endDate = endDateMillis?.let { TimeCompat.millisToLocalDate(it) }
 
             val result = provider.readHealthData(dataType, startDate, endDate, limit)
-            result?.let {
-                ResponseBuilder.buildHealthDataSuccessResponse(platform, it)
-            } ?: ResponseBuilder.buildErrorResponse(
-                platform,
-                "Failed to read health data for type: $dataType",
-                "data_read_failed"
-            )
+
+            if (result == null) {
+                return@withContext ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to read health data for type: $dataType",
+                    "data_read_failed"
+                )
+            }
+
+            // 检查是否包含错误信息
+            val hasError = result.metadata["error"] as? Boolean ?: false
+            if (hasError) {
+                val errorMessage = result.metadata["errorMessage"] as? String ?: "Unknown error"
+                val errorCode = result.metadata["errorCode"] as? String ?: ""
+
+                return@withContext ResponseBuilder.buildErrorResponse(
+                    platform,
+                    errorMessage,
+                    errorCode
+                )
+            }
+
+            // 正常返回数据
+            ResponseBuilder.buildHealthDataSuccessResponse(platform, result)
         } catch (e: Exception) {
             Log.e(TAG, "Error reading health data for platform $platform", e)
             ResponseBuilder.buildErrorResponse(platform, e.message ?: "Unknown error")

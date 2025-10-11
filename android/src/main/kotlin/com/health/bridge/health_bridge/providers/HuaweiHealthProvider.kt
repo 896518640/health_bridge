@@ -168,10 +168,10 @@ class HuaweiHealthProvider(
             Log.i(TAG, "=== Huawei Health Kit initialized successfully ===")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to initialize Huawei Health Kit", e)
-            Log.e(TAG, "Exception type: ${e.javaClass.name}")
-            Log.e(TAG, "Exception message: ${e.message}")
-            e.printStackTrace()
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "初始化Health Kit")
+            Log.e(TAG, "❌ Failed to initialize Huawei Health Kit")
+            Log.e(TAG, "   完整错误信息: ${errorInfo["fullMessage"]}")
             false
         }
     }
@@ -270,21 +270,10 @@ class HuaweiHealthProvider(
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error reading step count for date: $date", e)
-            Log.e(TAG, "   Error type: ${e.javaClass.simpleName}")
-            Log.e(TAG, "   Error message: ${e.message}")
-
-            // 检查是否是权限相关错误
-            if (e is com.huawei.hms.common.ApiException) {
-                Log.e(TAG, "   API Exception status code: ${e.statusCode}")
-                when (e.statusCode) {
-                    50013 -> Log.e(TAG, "   → 权限不足 (HEALTH_AUTH_SCOPES_UNAUTHORIZED)")
-                    50059 -> Log.e(TAG, "   → 查询范围超过31天或权限不足")
-                    50065 -> Log.e(TAG, "   → 历史数据权限不足")
-                }
-            }
-
-            e.printStackTrace()
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "读取步数-指定日期")
+            Log.e(TAG, "❌ Error reading step count for date: $date")
+            Log.e(TAG, "   完整错误信息: ${errorInfo["fullMessage"]}")
             null
         }
     }
@@ -298,7 +287,7 @@ class HuaweiHealthProvider(
     override suspend fun readStepCountForDateRange(
         startDate: TimeCompat.LocalDate,
         endDate: TimeCompat.LocalDate
-    ): StepCountResult? {
+    ): StepCountResult? = withContext(Dispatchers.IO) {
         try {
             // 检查时间范围
             val daysDiff = java.time.Duration.between(
@@ -324,7 +313,7 @@ class HuaweiHealthProvider(
                 currentDate = currentDate.plusDays(1)
             }
 
-            return StepCountResult(
+            return@withContext StepCountResult(
                 totalSteps = totalSteps,
                 data = dailyResults,
                 dataSource = "huawei_health_kit",
@@ -336,8 +325,11 @@ class HuaweiHealthProvider(
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read step count for date range", e)
-            return null
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "读取步数-日期范围")
+            Log.e(TAG, "❌ Error reading step count for date range")
+            Log.e(TAG, "   完整错误信息: ${errorInfo["fullMessage"]}")
+            return@withContext null
         }
     }
 
@@ -420,10 +412,10 @@ class HuaweiHealthProvider(
                 return@withContext false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error requesting permissions", e)
-            Log.e(TAG, "Exception type: ${e.javaClass.name}")
-            Log.e(TAG, "Exception message: ${e.message}")
-            e.printStackTrace()
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "请求权限")
+            Log.e(TAG, "❌ Error requesting permissions")
+            Log.e(TAG, "   完整错误信息: ${errorInfo["fullMessage"]}")
             false
         }
     }
@@ -557,10 +549,10 @@ class HuaweiHealthProvider(
             Log.d(TAG, "[PERMISSION] 结果: $permissions")
             return@withContext permissions
         } catch (e: Exception) {
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "检查权限")
             Log.e(TAG, "[PERMISSION] ========== ❌ 权限检查异常 ==========")
-            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
-            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "[PERMISSION] 完整错误信息: ${errorInfo["fullMessage"]}")
             return@withContext checkPermissionsFallback(dataTypes)
         }
     }
@@ -631,10 +623,10 @@ class HuaweiHealthProvider(
             Log.d(TAG, "[PERMISSION] ========== 取消全部授权 END (结果: $result) ==========")
             return@withContext result
         } catch (e: Exception) {
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "取消全部授权")
             Log.e(TAG, "[PERMISSION] ========== ❌ 取消全部授权异常 ==========")
-            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
-            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "[PERMISSION] 完整错误信息: ${errorInfo["fullMessage"]}")
             false
         }
     }
@@ -713,10 +705,10 @@ class HuaweiHealthProvider(
             Log.d(TAG, "[PERMISSION] ========== 取消部分授权 END (结果: $result) ==========")
             return@withContext result
         } catch (e: Exception) {
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "取消部分授权")
             Log.e(TAG, "[PERMISSION] ========== ❌ 取消部分授权异常 ==========")
-            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
-            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "[PERMISSION] 完整错误信息: ${errorInfo["fullMessage"]}")
             false
         }
     }
@@ -748,7 +740,10 @@ class HuaweiHealthProvider(
 
             return@withContext result
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error checking authorization", e)
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "检查Health App授权")
+            Log.e(TAG, "❌ Error checking authorization")
+            Log.e(TAG, "   完整错误信息: ${errorInfo["fullMessage"]}")
             return@withContext false
         }
     }
@@ -815,30 +810,23 @@ class HuaweiHealthProvider(
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "[PERMISSION] ========== ❌ 读取失败 ==========")
-            Log.e(TAG, "[PERMISSION] 数据类型: $dataType")
-            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
-            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "读取健康数据")
 
-            // 检查是否是权限错误
-            if (e is com.huawei.hms.common.ApiException) {
-                val statusCode = e.statusCode
-                Log.e(TAG, "[PERMISSION] 🔍 API异常状态码: $statusCode")
-
-                when (statusCode) {
-                    50013 -> {
-                        Log.e(TAG, "[PERMISSION] ❌ 权限不足 (HEALTH_AUTH_SCOPES_UNAUTHORIZED)")
-                        Log.e(TAG, "[PERMISSION] 📌 这是正确的行为: 用户已取消授权!")
-                    }
-                    50059 -> Log.e(TAG, "[PERMISSION] 查询范围超过31天或权限不足")
-                    50065 -> Log.e(TAG, "[PERMISSION] 历史数据权限不足")
-                    else -> Log.e(TAG, "[PERMISSION] 其他API错误")
-                }
-            }
-
-            e.printStackTrace()
-            Log.e(TAG, "[PERMISSION] 返回 null")
-            null
+            // 返回包含完整错误信息的 HealthDataResult
+            HealthDataResult(
+                data = emptyList(),
+                dataSource = "huawei_health_kit",
+                metadata = mapOf(
+                    "error" to true,
+                    "errorCode" to errorInfo["errorCode"]!!,
+                    "errorType" to errorInfo["errorType"]!!,
+                    "errorMessage" to errorInfo["fullMessage"]!!,
+                    "officialMessage" to errorInfo["officialMessage"]!!,
+                    "customMessage" to errorInfo["customMessage"]!!,
+                    "dataType" to dataType
+                )
+            )
         }
     }
 
@@ -994,6 +982,139 @@ class HuaweiHealthProvider(
                 "requiresSpecialPermission" to false,
                 "notes" to "Read-only support"
             )
+        }
+    }
+
+    /**
+     * 构建错误信息（统一方法）
+     *
+     * @param e 异常对象
+     * @param context 错误上下文描述
+     * @return 包含错误码、官方描述和自定义说明的错误信息Map
+     */
+    private fun buildErrorInfo(e: Exception, context: String = ""): Map<String, Any> {
+        val errorInfo = mutableMapOf<String, Any>()
+
+        Log.e(TAG, "[$context] ========== ❌ 错误 ==========")
+        Log.e(TAG, "[$context] 异常类型: ${e.javaClass.simpleName}")
+        Log.e(TAG, "[$context] 异常信息: ${e.message}")
+
+        // 优先检查 ApiException（包含 statusCode）
+        if (e is com.huawei.hms.common.ApiException) {
+            val statusCode = e.statusCode
+            Log.e(TAG, "[$context] 🔍 API异常状态码: $statusCode")
+
+            buildErrorInfoWithStatusCode(statusCode, "ApiException", context, errorInfo)
+        }
+        // 检查 SecurityException，尝试从 message 中解析错误码
+        else if (e is SecurityException) {
+            Log.e(TAG, "[$context] ❌ SecurityException")
+
+            // 尝试从 message 中解析错误码（华为 SDK 有时会在 message 中放错误码）
+            val statusCode = e.message?.toIntOrNull()
+
+            if (statusCode != null) {
+                Log.e(TAG, "[$context] 🔍 从异常消息中解析到错误码: $statusCode")
+                buildErrorInfoWithStatusCode(statusCode, "SecurityException", context, errorInfo)
+            } else {
+                Log.e(TAG, "[$context] ⚠️ 无法从异常消息中解析错误码")
+                errorInfo["errorCode"] = "SECURITY_EXCEPTION"
+                errorInfo["errorType"] = "SecurityException"
+                errorInfo["officialMessage"] = ""
+                errorInfo["customMessage"] = "安全异常"
+                errorInfo["fullMessage"] = "安全异常: ${e.message}"
+            }
+        }
+        else {
+            errorInfo["errorCode"] = "UNKNOWN"
+            errorInfo["errorType"] = e.javaClass.simpleName
+            errorInfo["officialMessage"] = ""
+            errorInfo["customMessage"] = e.message ?: "未知错误"
+            errorInfo["fullMessage"] = e.message ?: "未知错误"
+        }
+
+        e.printStackTrace()
+        Log.e(TAG, "[$context] 错误信息: ${errorInfo["fullMessage"]}")
+
+        return errorInfo
+    }
+
+    /**
+     * 使用错误码构建错误信息
+     */
+    private fun buildErrorInfoWithStatusCode(
+        statusCode: Int,
+        exceptionType: String,
+        context: String,
+        errorInfo: MutableMap<String, Any>
+    ) {
+        // 使用华为官方的错误码描述方法
+        val officialMessage = try {
+            HiHealthStatusCodes.getStatusCodeMessage(statusCode)
+        } catch (ex: Exception) {
+            null
+        }
+
+        Log.d(TAG, "[$context] 华为官方错误描述: $officialMessage")
+
+        // 构建详细的中文错误信息
+        val customMessage = when (statusCode) {
+            50005 -> {
+                Log.e(TAG, "[$context] ❌ 鉴权未知错误 (错误码: 50005)")
+                "权限鉴权失败，请确保已获得授权\n" +
+                "可能原因：\n" +
+                "1. 请求的数据类型未在联盟卡片中申请或未通过审核\n" +
+                "2. 用户未授权此数据类型的读取权限\n" +
+                "3. HMS缓存未更新，请尝试清除HMS Core缓存"
+            }
+            50013 -> {
+                Log.e(TAG, "[$context] ❌ 权限不足 (HEALTH_AUTH_SCOPES_UNAUTHORIZED)")
+                "权限未授权，用户已拒绝或取消授权"
+            }
+            50059 -> {
+                Log.e(TAG, "[$context] ❌ 查询范围超过31天或权限不足")
+                "查询时间范围超过31天或权限不足\n华为Health Kit限制单次查询不超过31天"
+            }
+            50065 -> {
+                Log.e(TAG, "[$context] ❌ 历史数据权限不足")
+                "历史数据权限不足\n需要申请历史数据访问权限"
+            }
+            50011 -> {
+                Log.e(TAG, "[$context] ❌ 华为账号未登录或未授权")
+                "华为账号未登录或未授权"
+            }
+            -50000 -> {
+                Log.e(TAG, "[$context] ❌ NO_DATA_COLLECTOR_ERROR")
+                "数据采集器当前无数据\n数据采集器需要先添加再使用"
+            }
+            -50001 -> {
+                Log.e(TAG, "[$context] ❌ EXISTED_RECORDER_ERROR")
+                "该记录已存在\n请确认记录是否正确"
+            }
+            -50002 -> {
+                Log.e(TAG, "[$context] ❌ NO_SAVED_DEVICE_ERROR")
+                "未找到已存储的设备\n请确认设备信息是否正确"
+            }
+            -50003 -> {
+                Log.e(TAG, "[$context] ❌ NO_MONITOR_ERROR")
+                "未注册的listener\n请确认listener是否正确"
+            }
+            else -> {
+                Log.e(TAG, "[$context] ❌ 其他API错误 (错误码: $statusCode)")
+                "API错误，请查看华为Health Kit文档获取详细信息"
+            }
+        }
+
+        errorInfo["errorCode"] = statusCode.toString()
+        errorInfo["errorType"] = exceptionType
+        errorInfo["officialMessage"] = officialMessage ?: ""
+        errorInfo["customMessage"] = customMessage
+        errorInfo["fullMessage"] = buildString {
+            append(customMessage)
+            append(" (错误码: $statusCode)")
+            if (officialMessage != null) {
+                append("\n官方描述: $officialMessage")
+            }
         }
     }
 
@@ -1273,10 +1394,10 @@ class HuaweiHealthProvider(
                 return false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Exception while handling authorization result", e)
-            Log.e(TAG, "   Error type: ${e.javaClass.simpleName}")
-            Log.e(TAG, "   Error message: ${e.message}")
-            e.printStackTrace()
+            // 使用统一的错误处理方法
+            val errorInfo = buildErrorInfo(e, "处理授权结果")
+            Log.e(TAG, "❌ Exception while handling authorization result")
+            Log.e(TAG, "   完整错误信息: ${errorInfo["fullMessage"]}")
             return false
         }
     }
