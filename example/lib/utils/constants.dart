@@ -33,3 +33,10 @@ final List<HealthDataType> writableTypes = [
   HealthDataType.oxygenSaturation,
   HealthDataType.bodyTemperature,
 ];
+
+/// 华为重点测试数据类型（步数、血糖、血压）
+final List<HealthDataType> huaweiTestTypes = [
+  HealthDataType.steps,
+  HealthDataType.glucose,
+  HealthDataType.bloodPressure,
+];

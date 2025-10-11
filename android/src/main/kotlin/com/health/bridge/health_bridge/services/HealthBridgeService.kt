@@ -197,6 +197,108 @@ class HealthBridgeService(context: Context) {
     }
 
     /**
+     * 取消全部授权
+     */
+    suspend fun revokeAllAuthorizations(platform: String): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val provider = getOrCreateProvider(platform)
+                ?: return@withContext ResponseBuilder.buildPlatformNotSupportedResponse(platform)
+
+            // 确保provider已初始化
+            Log.d(TAG, "Ensuring provider is initialized before revoking all authorizations...")
+            val initSuccess = provider.initialize()
+            if (!initSuccess) {
+                Log.e(TAG, "Failed to initialize provider before revoking authorizations")
+                return@withContext ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to initialize platform before revoking authorizations",
+                    "initialization_failed"
+                )
+            }
+
+            // 调用provider的取消授权方法
+            val success = when (provider) {
+                is com.health.bridge.health_bridge.providers.HuaweiHealthProvider -> {
+                    provider.revokeAllAuthorizations()
+                }
+                else -> {
+                    Log.w(TAG, "Revoke all authorizations not supported for platform: $platform")
+                    false
+                }
+            }
+
+            if (success) {
+                mapOf(
+                    "status" to "success",
+                    "message" to "All authorizations revoked successfully"
+                )
+            } else {
+                ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to revoke all authorizations",
+                    "revoke_all_failed"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error revoking all authorizations for platform $platform", e)
+            ResponseBuilder.buildErrorResponse(platform, e.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * 取消部分授权
+     */
+    suspend fun revokeAuthorizations(
+        platform: String,
+        dataTypes: List<String>,
+        operations: List<String>
+    ): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val provider = getOrCreateProvider(platform)
+                ?: return@withContext ResponseBuilder.buildPlatformNotSupportedResponse(platform)
+
+            // 确保provider已初始化
+            Log.d(TAG, "Ensuring provider is initialized before revoking authorizations...")
+            val initSuccess = provider.initialize()
+            if (!initSuccess) {
+                Log.e(TAG, "Failed to initialize provider before revoking authorizations")
+                return@withContext ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to initialize platform before revoking authorizations",
+                    "initialization_failed"
+                )
+            }
+
+            // 调用provider的取消授权方法
+            val success = when (provider) {
+                is com.health.bridge.health_bridge.providers.HuaweiHealthProvider -> {
+                    provider.revokeAuthorizations(dataTypes, operations)
+                }
+                else -> {
+                    Log.w(TAG, "Revoke authorizations not supported for platform: $platform")
+                    false
+                }
+            }
+
+            if (success) {
+                mapOf(
+                    "status" to "success",
+                    "message" to "Authorizations revoked successfully"
+                )
+            } else {
+                ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to revoke authorizations",
+                    "revoke_failed"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error revoking authorizations for platform $platform", e)
+            ResponseBuilder.buildErrorResponse(platform, e.message ?: "Unknown error")
+        }
+    }
+
+    /**
      * 获取支持的数据类型
      */
     fun getSupportedDataTypes(platform: String, operation: String?): List<String> {

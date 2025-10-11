@@ -215,6 +215,74 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
     }
   }
 
+  @override
+  Future<HealthDataResult> revokeAllAuthorizations({
+    required HealthPlatform platform,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod(
+        'revokeAllAuthorizations',
+        {
+          'platform': platform.key,
+        },
+      );
+
+      if (result == null) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: platform,
+          message: 'No result returned from platform',
+        );
+      }
+
+      final resultMap = Map<String, dynamic>.from(result as Map);
+      return _parseHealthDataResult(resultMap, platform);
+    } catch (e) {
+      debugPrint('Error revoking all authorizations: $e');
+      return HealthDataResult(
+        status: HealthDataStatus.error,
+        platform: platform,
+        message: e.toString(),
+      );
+    }
+  }
+
+  @override
+  Future<HealthDataResult> revokeAuthorizations({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    required List<HealthDataOperation> operations,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod(
+        'revokeAuthorizations',
+        {
+          'platform': platform.key,
+          'dataTypes': dataTypes.map((t) => t.key).toList(),
+          'operations': operations.map((o) => o.key).toList(),
+        },
+      );
+
+      if (result == null) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: platform,
+          message: 'No result returned from platform',
+        );
+      }
+
+      final resultMap = Map<String, dynamic>.from(result as Map);
+      return _parseHealthDataResult(resultMap, platform);
+    } catch (e) {
+      debugPrint('Error revoking authorizations: $e');
+      return HealthDataResult(
+        status: HealthDataStatus.error,
+        platform: platform,
+        message: e.toString(),
+      );
+    }
+  }
+
   // ========== 平台能力查询实现 ==========
 
   @override

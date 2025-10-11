@@ -38,6 +38,7 @@ class HuaweiHealthProvider(
 
     private var settingController: SettingController? = null
     private var dataController: DataController? = null
+    private var consentsController: com.huawei.hms.hihealth.ConsentsController? = null
     private var isInitialized = false
 
     companion object {
@@ -159,6 +160,10 @@ class HuaweiHealthProvider(
             dataController = HuaweiHiHealth.getDataController(context)
             Log.d(TAG, "✅ DataController created: ${dataController != null}")
 
+            Log.d(TAG, "Creating ConsentsController...")
+            consentsController = HuaweiHiHealth.getConsentsController(context)
+            Log.d(TAG, "✅ ConsentsController created: ${consentsController != null}")
+
             isInitialized = true
             Log.i(TAG, "=== Huawei Health Kit initialized successfully ===")
             true
@@ -186,18 +191,28 @@ class HuaweiHealthProvider(
         try {
             Log.d(TAG, "📖 Reading steps for date: $date")
 
-            // ⭐ 关键改进：在读取数据前检查权限
-            if (!checkHealthAppAuthorization()) {
-                Log.e(TAG, "❌ Cannot read steps: Health App not authorized")
+            // ⭐ 关键改进：使用新的 checkPermissions 方法检查 steps 权限
+            val permissionResult = checkPermissions(listOf("steps"), "read")
+            val permissionStatus = permissionResult["steps"] as? String
+
+            Log.d(TAG, "   🔐 Permission status for steps: $permissionStatus")
+
+            if (permissionStatus != "granted") {
+                Log.e(TAG, "❌ Cannot read steps: Permission not granted")
+                Log.e(TAG, "   Current status: $permissionStatus")
                 Log.e(TAG, "   Please call requestPermissions() and wait for user to grant permission")
                 return@withContext null
             }
+
+            Log.d(TAG, "   ✅ Permission check passed for steps, proceeding with data read")
 
             val javaDate = LocalDate.of(date.year, date.month, date.dayOfMonth)
             val startTime = javaDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             // ⭐ 使用当天结束时间，而不是第二天开始时间，避免超过31天限制
             val endTime = javaDate.atTime(23, 59, 59, 999_000_000)
                 .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+            Log.d(TAG, "   Time range: $startTime to $endTime")
 
             // ⭐ 关键改进：直接使用 DataType 读取，而不是 DataCollector
             // 这样可以读取所有来源的数据，不仅限于本应用写入的数据
@@ -215,6 +230,8 @@ class HuaweiHealthProvider(
                     }
                     .addOnFailureListener { e ->
                         Log.e(TAG, "❌ Read failed: ${e.message}", e)
+                        Log.e(TAG, "   Exception type: ${e.javaClass.simpleName}")
+                        Log.e(TAG, "   Error code (if available): ${(e as? com.huawei.hms.common.ApiException)?.statusCode}")
                         continuation.resumeWithException(e)
                     }
             }
@@ -256,6 +273,17 @@ class HuaweiHealthProvider(
             Log.e(TAG, "❌ Error reading step count for date: $date", e)
             Log.e(TAG, "   Error type: ${e.javaClass.simpleName}")
             Log.e(TAG, "   Error message: ${e.message}")
+
+            // 检查是否是权限相关错误
+            if (e is com.huawei.hms.common.ApiException) {
+                Log.e(TAG, "   API Exception status code: ${e.statusCode}")
+                when (e.statusCode) {
+                    50013 -> Log.e(TAG, "   → 权限不足 (HEALTH_AUTH_SCOPES_UNAUTHORIZED)")
+                    50059 -> Log.e(TAG, "   → 查询范围超过31天或权限不足")
+                    50065 -> Log.e(TAG, "   → 历史数据权限不足")
+                }
+            }
+
             e.printStackTrace()
             null
         }
@@ -430,18 +458,267 @@ class HuaweiHealthProvider(
 
     /**
      * 检查权限状态
+     *
+     * ⚠️ 更新：使用 ConsentsController 查询用户已授权的权限列表
+     * - 这是最准确的权限检查方式
+     * - 可以查询到用户已授权的所有 Scope
      */
     override suspend fun checkPermissions(
         dataTypes: List<String>,
         operation: String
-    ): Map<String, Any> {
-        // 华为Health Kit没有直接查询权限状态的API
-        // 返回一个通用的结果
-        val permissions = mutableMapOf<String, Any>()
-        for (dataType in dataTypes) {
-            permissions[dataType] = if (isInitialized) "granted" else "denied"
+    ): Map<String, Any> = withContext(Dispatchers.IO) {
+        Log.d(TAG, "[PERMISSION] ========== 开始检查权限 ==========")
+        Log.d(TAG, "[PERMISSION] 数据类型: $dataTypes")
+        Log.d(TAG, "[PERMISSION] 操作类型: $operation")
+
+        try {
+            if (consentsController == null) {
+                Log.w(TAG, "[PERMISSION] ⚠️ ConsentsController 为空，使用备用方法")
+                return@withContext checkPermissionsFallback(dataTypes)
+            }
+
+            // 查询用户已授权的 Scope 列表
+            Log.d(TAG, "[PERMISSION] >>> 步骤1: 查询已授权的 Scope 列表")
+
+            // 构建当前应用的 appId
+            val appId = context.packageManager
+                .getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
+                .metaData?.getString("com.huawei.hms.client.appid")
+                ?.removePrefix("appid=") ?: ""
+
+            Log.d(TAG, "[PERMISSION] App ID: $appId")
+
+            // 根据华为官方示例，第一个参数是语言代码，第二个参数是 APP ID
+            Log.d(TAG, "[PERMISSION] 调用 ConsentsController.get(\"zh-cn\", \"$appId\")...")
+            val grantedScopeLangItem = suspendCoroutine<com.huawei.hms.hihealth.data.ScopeLangItem?> { continuation ->
+                consentsController?.get("zh-cn", appId)
+                    ?.addOnSuccessListener { scopeLangItem ->
+                        Log.d(TAG, "[PERMISSION] ✅ ConsentsController.get() 成功")
+                        Log.d(TAG, "[PERMISSION] ScopeLangItem: $scopeLangItem")
+                        Log.d(TAG, "[PERMISSION] url2Desc: ${scopeLangItem?.url2Desc}")
+                        continuation.resume(scopeLangItem)
+                    }
+                    ?.addOnFailureListener { e ->
+                        Log.e(TAG, "[PERMISSION] ❌ ConsentsController.get() 失败: ${e.message}", e)
+                        if (e is com.huawei.hms.common.ApiException) {
+                            Log.e(TAG, "[PERMISSION] API异常状态码: ${e.statusCode}")
+                        }
+                        continuation.resume(null)
+                    }
+            }
+
+            if (grantedScopeLangItem == null) {
+                Log.w(TAG, "[PERMISSION] ⚠️ ScopeLangItem 为空，使用备用方法")
+                return@withContext checkPermissionsFallback(dataTypes)
+            }
+
+            // 根据华为官方示例，使用 url2Desc.keys 获取已授权的 scope URLs
+            Log.d(TAG, "[PERMISSION] >>> 步骤2: 解析已授权的 Scope URLs")
+            val grantedScopeUrls = if (grantedScopeLangItem.url2Desc != null) {
+                Log.d(TAG, "[PERMISSION] url2Desc 不为空，提取 keys")
+                grantedScopeLangItem.url2Desc.keys
+            } else {
+                Log.w(TAG, "[PERMISSION] ⚠️ url2Desc 为空!")
+                emptySet()
+            }
+
+            Log.d(TAG, "[PERMISSION] 📋 已授权的 Scope 列表 (共${grantedScopeUrls.size}个):")
+            if (grantedScopeUrls.isEmpty()) {
+                Log.d(TAG, "[PERMISSION]    (无)")
+            } else {
+                grantedScopeUrls.forEachIndexed { index, scopeUrl ->
+                    Log.d(TAG, "[PERMISSION]    [$index] $scopeUrl")
+                }
+            }
+
+            // 检查每个数据类型的权限状态
+            Log.d(TAG, "[PERMISSION] >>> 步骤3: 检查每个数据类型的权限状态")
+            val permissions = mutableMapOf<String, Any>()
+            for (dataType in dataTypes) {
+                val requiredScope = mapDataTypeToScope(dataType, operation)
+                Log.d(TAG, "[PERMISSION] 数据类型 '$dataType' 需要的 Scope: $requiredScope")
+
+                val isGranted = if (requiredScope != null) {
+                    val contains = grantedScopeUrls.contains(requiredScope)
+                    Log.d(TAG, "[PERMISSION]    已授权列表是否包含此Scope: $contains")
+                    contains
+                } else {
+                    Log.w(TAG, "[PERMISSION]    无法映射到 Scope!")
+                    false
+                }
+
+                val status = if (isGranted) "granted" else "denied"
+                permissions[dataType] = status
+
+                Log.d(TAG, "[PERMISSION]    最终状态: $status")
+            }
+
+            Log.d(TAG, "[PERMISSION] ========== 权限检查完成 ==========")
+            Log.d(TAG, "[PERMISSION] 结果: $permissions")
+            return@withContext permissions
+        } catch (e: Exception) {
+            Log.e(TAG, "[PERMISSION] ========== ❌ 权限检查异常 ==========")
+            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
+            e.printStackTrace()
+            return@withContext checkPermissionsFallback(dataTypes)
         }
+    }
+
+    /**
+     * 备用权限检查方法（当 ConsentsController 不可用时）
+     */
+    private suspend fun checkPermissionsFallback(dataTypes: List<String>): Map<String, Any> {
+        Log.d(TAG, "[PERMISSION] ========== 使用备用权限检查方法 ==========")
+
+        val isAuthorized = checkHealthAppAuthorization()
+        Log.d(TAG, "[PERMISSION] Health App 授权状态: $isAuthorized")
+
+        val permissions = mutableMapOf<String, Any>()
+        val status = if (isAuthorized) "granted" else "notDetermined"
+
+        for (dataType in dataTypes) {
+            permissions[dataType] = status
+            Log.d(TAG, "[PERMISSION]    $dataType: $status")
+        }
+
+        Log.d(TAG, "[PERMISSION] ========== 备用权限检查完成 ==========")
         return permissions
+    }
+
+    /**
+     * 取消全部授权
+     * 参考官方文档: https://developer.huawei.com/consumer/cn/doc/HMSCore-References/consentscontroller-0000001060039068
+     *
+     * 使用 ConsentsController.cancelAuthorization(boolean deleteData)
+     */
+    suspend fun revokeAllAuthorizations(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "[PERMISSION] ========== 取消全部授权 START ==========")
+
+            if (consentsController == null) {
+                Log.e(TAG, "[PERMISSION] ❌ ConsentsController is null!")
+                return@withContext false
+            }
+
+            // 获取 APP ID
+            val appId = context.packageManager
+                .getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
+                .metaData?.getString("com.huawei.hms.client.appid")
+                ?.removePrefix("appid=") ?: ""
+
+            Log.d(TAG, "[PERMISSION] App ID: $appId")
+            Log.d(TAG, "[PERMISSION] 是否删除用户数据: true")
+            Log.d(TAG, "[PERMISSION] 调用 ConsentsController.cancelAuthorization(true)...")
+
+            // 按照官方文档示例：取消应用全部授权，同时删除用户数据
+            val result = suspendCoroutine<Boolean> { continuation ->
+                consentsController?.cancelAuthorization(true)
+                    ?.addOnSuccessListener {
+                        Log.d(TAG, "[PERMISSION] ✅ cancelAuthorization SUCCESS!")
+                        Log.d(TAG, "[PERMISSION] 用户数据已删除")
+                        continuation.resume(true)
+                    }
+                    ?.addOnFailureListener { e ->
+                        Log.e(TAG, "[PERMISSION] ❌ cancelAuthorization FAILED: ${e.message}", e)
+                        if (e is com.huawei.hms.common.ApiException) {
+                            Log.e(TAG, "[PERMISSION] API异常状态码: ${e.statusCode}")
+                        }
+                        continuation.resume(false)
+                    }
+            }
+
+            Log.d(TAG, "[PERMISSION] ========== 取消全部授权 END (结果: $result) ==========")
+            return@withContext result
+        } catch (e: Exception) {
+            Log.e(TAG, "[PERMISSION] ========== ❌ 取消全部授权异常 ==========")
+            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * 取消部分授权（指定数据类型）
+     * 参考官方文档: https://developer.huawei.com/consumer/cn/doc/HMSCore-References/consentscontroller-0000001060039068
+     *
+     * 使用 ConsentsController.cancelAuthorization(String appId, List<String> scopes)
+     */
+    suspend fun revokeAuthorizations(
+        dataTypes: List<String>,
+        operations: List<String>
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "[PERMISSION] ========== 取消部分授权 START ==========")
+            Log.d(TAG, "[PERMISSION] 数据类型: $dataTypes")
+            Log.d(TAG, "[PERMISSION] 操作类型: $operations")
+
+            if (consentsController == null) {
+                Log.e(TAG, "[PERMISSION] ❌ ConsentsController is null!")
+                return@withContext false
+            }
+
+            // 获取 APP ID
+            val appId = context.packageManager
+                .getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
+                .metaData?.getString("com.huawei.hms.client.appid")
+                ?.removePrefix("appid=") ?: ""
+
+            Log.d(TAG, "[PERMISSION] App ID: $appId")
+
+            // 构建要取消的 Scope 列表
+            Log.d(TAG, "[PERMISSION] >>> 步骤1: 构建要取消的 Scope 列表")
+            val scopes = mutableListOf<String>()
+            for (dataType in dataTypes) {
+                for (operation in operations) {
+                    val scope = mapDataTypeToScope(dataType, operation)
+                    if (scope != null) {
+                        scopes.add(scope)
+                        Log.d(TAG, "[PERMISSION]    添加 Scope: $scope ($dataType - $operation)")
+                    } else {
+                        Log.w(TAG, "[PERMISSION]    ⚠️ 无法映射 Scope: $dataType ($operation)")
+                    }
+                }
+            }
+
+            if (scopes.isEmpty()) {
+                Log.w(TAG, "[PERMISSION] ⚠️ 没有有效的 Scope 需要取消")
+                return@withContext false
+            }
+
+            Log.d(TAG, "[PERMISSION] 共 ${scopes.size} 个 Scope 需要取消:")
+            scopes.forEachIndexed { index, scope ->
+                Log.d(TAG, "[PERMISSION]    [$index] $scope")
+            }
+
+            // 按照官方文档示例：取消指定 scopes 的授权
+            Log.d(TAG, "[PERMISSION] >>> 步骤2: 调用 ConsentsController.cancelAuthorization(appId, scopes)...")
+            val result = suspendCoroutine<Boolean> { continuation ->
+                consentsController?.cancelAuthorization(appId, scopes)
+                    ?.addOnSuccessListener {
+                        Log.d(TAG, "[PERMISSION] ✅ cancelAuthorization SUCCESS!")
+                        Log.d(TAG, "[PERMISSION] 已取消 ${scopes.size} 个 Scope 的授权")
+                        continuation.resume(true)
+                    }
+                    ?.addOnFailureListener { e ->
+                        Log.e(TAG, "[PERMISSION] ❌ cancelAuthorization FAILED: ${e.message}", e)
+                        if (e is com.huawei.hms.common.ApiException) {
+                            Log.e(TAG, "[PERMISSION] API异常状态码: ${e.statusCode}")
+                        }
+                        continuation.resume(false)
+                    }
+            }
+
+            Log.d(TAG, "[PERMISSION] ========== 取消部分授权 END (结果: $result) ==========")
+            return@withContext result
+        } catch (e: Exception) {
+            Log.e(TAG, "[PERMISSION] ========== ❌ 取消部分授权异常 ==========")
+            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
+            e.printStackTrace()
+            false
+        }
     }
 
     /**
@@ -492,26 +769,29 @@ class HuaweiHealthProvider(
         limit: Int?
     ): HealthDataResult? = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "📖 Reading health data: $dataType")
+            Log.d(TAG, "[PERMISSION] ========== 开始读取健康数据 ==========")
+            Log.d(TAG, "[PERMISSION] 数据类型: $dataType")
 
-            // 1. 检查权限
-            if (!checkHealthAppAuthorization()) {
-                Log.e(TAG, "❌ Health App not authorized")
-                return@withContext null
-            }
+            // ⚠️ 重要：不再预先检查权限！
+            // 原因：ConsentsController.get() 有缓存，取消授权后仍然返回旧的授权列表
+            // 解决：直接尝试读取，如果无权限API会抛出错误码 50013
+            Log.d(TAG, "[PERMISSION] ⚠️ 跳过权限预检查(ConsentsController有缓存问题)")
+            Log.d(TAG, "[PERMISSION] 直接尝试读取，通过API错误码判断权限")
 
             // 2. 获取 DataType
             val huaweiDataType = dataTypeMapping[dataType]
             if (huaweiDataType == null) {
-                Log.w(TAG, "⚠️ Unsupported data type: $dataType")
+                Log.e(TAG, "[PERMISSION] ❌ 不支持的数据类型: $dataType")
                 return@withContext null
             }
+            Log.d(TAG, "[PERMISSION] 华为 DataType: ${huaweiDataType.name}")
 
             // 3. 计算时间范围（处理30天限制）
             val (actualStartTime, actualEndTime, adjustedStart, adjustedEnd) =
                 calculateTimeRange(startDate, endDate)
 
             // 4. 执行读取请求
+            Log.d(TAG, "[PERMISSION] 📡 执行读取请求...")
             val readReply = executeReadRequest(huaweiDataType, actualStartTime, actualEndTime, dataType)
 
             // 5. 处理数据 - 根据类型分发
@@ -522,7 +802,7 @@ class HuaweiHealthProvider(
                 limit
             )
 
-            Log.d(TAG, "✅ 成功读取 ${dataList.size} 条数据 : $dataType")
+            Log.d(TAG, "[PERMISSION] ========== ✅ 读取成功: ${dataList.size} 条数据 ==========")
 
             HealthDataResult(
                 data = dataList,
@@ -535,9 +815,29 @@ class HuaweiHealthProvider(
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ 读取健康数据失败: $dataType", e)
-            Log.e(TAG, "   Error: ${e.javaClass.simpleName} - ${e.message}")
+            Log.e(TAG, "[PERMISSION] ========== ❌ 读取失败 ==========")
+            Log.e(TAG, "[PERMISSION] 数据类型: $dataType")
+            Log.e(TAG, "[PERMISSION] 异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "[PERMISSION] 异常信息: ${e.message}")
+
+            // 检查是否是权限错误
+            if (e is com.huawei.hms.common.ApiException) {
+                val statusCode = e.statusCode
+                Log.e(TAG, "[PERMISSION] 🔍 API异常状态码: $statusCode")
+
+                when (statusCode) {
+                    50013 -> {
+                        Log.e(TAG, "[PERMISSION] ❌ 权限不足 (HEALTH_AUTH_SCOPES_UNAUTHORIZED)")
+                        Log.e(TAG, "[PERMISSION] 📌 这是正确的行为: 用户已取消授权!")
+                    }
+                    50059 -> Log.e(TAG, "[PERMISSION] 查询范围超过31天或权限不足")
+                    50065 -> Log.e(TAG, "[PERMISSION] 历史数据权限不足")
+                    else -> Log.e(TAG, "[PERMISSION] 其他API错误")
+                }
+            }
+
             e.printStackTrace()
+            Log.e(TAG, "[PERMISSION] 返回 null")
             null
         }
     }
@@ -703,6 +1003,7 @@ class HuaweiHealthProvider(
     override fun cleanup() {
         settingController = null
         dataController = null
+        consentsController = null
         isInitialized = false
         Log.d(TAG, "Huawei Health Kit 清理完成")
     }

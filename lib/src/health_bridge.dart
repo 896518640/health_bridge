@@ -213,6 +213,62 @@ class HealthBridge {
     );
   }
 
+  /// 取消全部授权
+  ///
+  /// [platform] 健康平台
+  ///
+  /// 返回取消结果
+  ///
+  /// 使用示例：
+  /// ```dart
+  /// final result = await HealthBridge.revokeAllAuthorizations(
+  ///   platform: platform,
+  /// );
+  ///
+  /// if (result.isSuccess) {
+  ///   // 全部授权已取消
+  /// }
+  /// ```
+  static Future<HealthDataResult> revokeAllAuthorizations({
+    required HealthPlatform platform,
+  }) {
+    return HealthBridgePlatform.instance.revokeAllAuthorizations(
+      platform: platform,
+    );
+  }
+
+  /// 取消部分授权（指定数据类型）
+  ///
+  /// [platform] 健康平台
+  /// [dataTypes] 要取消授权的数据类型列表
+  /// [operations] 操作类型列表
+  ///
+  /// 返回取消结果
+  ///
+  /// 使用示例：
+  /// ```dart
+  /// final result = await HealthBridge.revokeAuthorizations(
+  ///   platform: platform,
+  ///   dataTypes: [HealthDataType.steps, HealthDataType.glucose],
+  ///   operations: [HealthDataOperation.read, HealthDataOperation.write],
+  /// );
+  ///
+  /// if (result.isSuccess) {
+  ///   // 指定数据类型的授权已取消
+  /// }
+  /// ```
+  static Future<HealthDataResult> revokeAuthorizations({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    required List<HealthDataOperation> operations,
+  }) {
+    return HealthBridgePlatform.instance.revokeAuthorizations(
+      platform: platform,
+      dataTypes: dataTypes,
+      operations: operations,
+    );
+  }
+
   // ========== 平台能力查询 ==========
 
   /// 获取指定平台支持的所有数据类型

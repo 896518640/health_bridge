@@ -69,6 +69,12 @@ class HealthBridgePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             "requestPermissions" -> {
                 handleRequestPermissions(call, result)
             }
+            "revokeAllAuthorizations" -> {
+                handleRevokeAllAuthorizations(call, result)
+            }
+            "revokeAuthorizations" -> {
+                handleRevokeAuthorizations(call, result)
+            }
             "getSupportedDataTypes" -> {
                 handleGetSupportedDataTypes(call, result)
             }
@@ -182,6 +188,48 @@ class HealthBridgePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             try {
                 val response = healthBridgeService.requestPermissions(
                     platform, dataTypes, operations, reason
+                )
+                result.success(response)
+            } catch (e: Exception) {
+                result.success(mapOf(
+                    "status" to "error",
+                    "message" to (e.message ?: "Unknown error")
+                ))
+            }
+        }
+    }
+
+    /**
+     * 取消全部授权
+     */
+    private fun handleRevokeAllAuthorizations(call: MethodCall, result: Result) {
+        val platform = call.argument<String>("platform") ?: "samsung_health"
+
+        coroutineScope.launch {
+            try {
+                val response = healthBridgeService.revokeAllAuthorizations(platform)
+                result.success(response)
+            } catch (e: Exception) {
+                result.success(mapOf(
+                    "status" to "error",
+                    "message" to (e.message ?: "Unknown error")
+                ))
+            }
+        }
+    }
+
+    /**
+     * 取消部分授权
+     */
+    private fun handleRevokeAuthorizations(call: MethodCall, result: Result) {
+        val platform = call.argument<String>("platform") ?: "samsung_health"
+        val dataTypes = call.argument<List<String>>("dataTypes") ?: emptyList()
+        val operations = call.argument<List<String>>("operations") ?: listOf("read")
+
+        coroutineScope.launch {
+            try {
+                val response = healthBridgeService.revokeAuthorizations(
+                    platform, dataTypes, operations
                 )
                 result.success(response)
             } catch (e: Exception) {

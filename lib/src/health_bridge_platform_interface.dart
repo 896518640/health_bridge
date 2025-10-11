@@ -113,6 +113,32 @@ abstract class HealthBridgePlatform extends PlatformInterface {
     );
   }
 
+  /// 取消全部授权
+  ///
+  /// [platform] 健康平台
+  ///
+  /// 返回取消结果
+  Future<HealthDataResult> revokeAllAuthorizations({
+    required HealthPlatform platform,
+  }) {
+    throw UnimplementedError('revokeAllAuthorizations() has not been implemented.');
+  }
+
+  /// 取消部分授权（指定数据类型）
+  ///
+  /// [platform] 健康平台
+  /// [dataTypes] 要取消授权的数据类型列表
+  /// [operations] 操作类型列表
+  ///
+  /// 返回取消结果
+  Future<HealthDataResult> revokeAuthorizations({
+    required HealthPlatform platform,
+    required List<HealthDataType> dataTypes,
+    required List<HealthDataOperation> operations,
+  }) {
+    throw UnimplementedError('revokeAuthorizations() has not been implemented.');
+  }
+
   // ========== 平台能力查询 ==========
 
   /// 获取指定平台支持的所有数据类型
