@@ -97,21 +97,15 @@ class SamsungHealthProvider(
                 return@withContext false
             }
 
-            // 请求权限
-            if (activity != null) {
-                Log.d(TAG, "🔐 Activity available, requesting initial permissions...")
-                hasPermissions = checkAndRequestPermissions(activity!!)
-                Log.d(TAG, "🔐 Permission request result: ${if (hasPermissions) "✅ GRANTED" else "❌ DENIED"}")
-            } else {
-                Log.w(TAG, "⚠️ Activity is null, skipping initial permission request")
-                hasPermissions = false
-            }
+            // 不在初始化时自动请求权限，避免弹出多个权限对话框
+            // 权限应该由用户主动触发（通过调用 requestPermissions 方法）
+            Log.d(TAG, "ℹ️ Skipping automatic permission request - will request when user explicitly asks")
 
             Log.d(TAG, "✅ Samsung Health initialized successfully")
             Log.d(TAG, "   - HealthDataStore: ${if (healthDataStore != null) "✅" else "❌"}")
-            Log.d(TAG, "   - Has Permissions: ${if (hasPermissions) "✅" else "❌"}")
+            Log.d(TAG, "   - Ready for permission requests")
 
-            // 即使没有权限，只要 store 初始化成功就返回 true
+            // Store 初始化成功即可返回 true
             return@withContext (healthDataStore != null)
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to initialize Samsung Health", e)
