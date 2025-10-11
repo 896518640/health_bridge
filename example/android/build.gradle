@@ -1,7 +1,22 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://developer.huawei.com/repo/' }
+    }
+    dependencies {
+        // Android Gradle Plugin (版本与settings.gradle一致)
+        classpath 'com.android.tools.build:gradle:7.3.0'
+        // Huawei AGConnect Plugin
+        classpath 'com.huawei.agconnect:agcp:1.9.1.301'
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://developer.huawei.com/repo/' }
     }
 }
 

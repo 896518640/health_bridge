@@ -1,4 +1,4 @@
-package com.dnurse.health.plugin.dnurse_health_plugin_example
+package com.novo.care.novo_care_app
 
 import io.flutter.embedding.android.FlutterActivity
 

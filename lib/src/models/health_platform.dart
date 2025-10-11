@@ -400,33 +400,41 @@ const List<PlatformCapability> _googleFitCapabilities = [
 ];
 
 /// Huawei Health 能力映射
+/// 注意：华为Health Kit仅支持3种数据类型的读取权限
+/// - 步数 (steps)
+/// - 血糖 (glucose)
+/// - 血压 (blood_pressure_systolic, blood_pressure_diastolic)
 const List<PlatformCapability> _huaweiHealthCapabilities = [
-  // 基础运动指标
-  PlatformCapability(dataType: HealthDataType.steps, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.distance, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.activeCalories, canRead: true, canWrite: true),
+  // 步数
+  PlatformCapability(
+    dataType: HealthDataType.steps,
+    canRead: true,
+    canWrite: false,
+    notes: 'Read-only support',
+  ),
 
-  // 血糖 - Huawei Health 支持
-  PlatformCapability(dataType: HealthDataType.glucose, canRead: true, canWrite: true),
+  // 血糖
+  PlatformCapability(
+    dataType: HealthDataType.glucose,
+    canRead: true,
+    canWrite: false,
+    requiresSpecialPermission: true,
+    notes: 'Read-only support, requires manual review approval',
+  ),
 
-  // 心血管
-  PlatformCapability(dataType: HealthDataType.heartRate, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.bloodPressureSystolic, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.bloodPressureDiastolic, canRead: true, canWrite: true),
-
-  // 身体指标
-  PlatformCapability(dataType: HealthDataType.weight, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.height, canRead: true, canWrite: true),
-  PlatformCapability(dataType: HealthDataType.bodyFat, canRead: true, canWrite: false),
-
-  // 睡眠 - Huawei Health 详细支持（只读）
-  PlatformCapability(dataType: HealthDataType.sleepDuration, canRead: true, canWrite: false),
-  PlatformCapability(dataType: HealthDataType.sleepDeep, canRead: true, canWrite: false),
-  PlatformCapability(dataType: HealthDataType.sleepLight, canRead: true, canWrite: false),
-
-  // 运动
-  PlatformCapability(dataType: HealthDataType.workout, canRead: true, canWrite: true),
-
-  // 血氧 - Huawei 特色功能
-  PlatformCapability(dataType: HealthDataType.oxygenSaturation, canRead: true, canWrite: true),
+  // 血压
+  PlatformCapability(
+    dataType: HealthDataType.bloodPressureSystolic,
+    canRead: true,
+    canWrite: false,
+    requiresSpecialPermission: true,
+    notes: 'Read-only support, requires manual review approval',
+  ),
+  PlatformCapability(
+    dataType: HealthDataType.bloodPressureDiastolic,
+    canRead: true,
+    canWrite: false,
+    requiresSpecialPermission: true,
+    notes: 'Read-only support, requires manual review approval',
+  ),
 ];

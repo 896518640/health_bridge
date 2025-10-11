@@ -164,6 +164,19 @@ class HealthBridgeService(context: Context) {
             val provider = getOrCreateProvider(platform)
                 ?: return@withContext ResponseBuilder.buildPlatformNotSupportedResponse(platform)
 
+            // 总是先初始化provider（如果已初始化则快速返回）
+            Log.d(TAG, "Ensuring provider is initialized before requesting permissions...")
+            val initSuccess = provider.initialize()
+            if (!initSuccess) {
+                Log.e(TAG, "Failed to initialize provider before requesting permissions")
+                return@withContext ResponseBuilder.buildErrorResponse(
+                    platform,
+                    "Failed to initialize platform before requesting permissions",
+                    "initialization_failed"
+                )
+            }
+            Log.d(TAG, "Provider initialization check passed")
+
             val success = provider.requestPermissions(dataTypes, operations, reason)
             if (success) {
                 mapOf(

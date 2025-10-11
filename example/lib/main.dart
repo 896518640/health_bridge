@@ -84,16 +84,17 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
     HealthDataType.workout,
   ];
 
-  // iOS可写入的数据类型
+  // 可写入的数据类型(华为Health Kit支持写入)
   final List<HealthDataType> _writableTypes = [
-    HealthDataType.glucose,
-    HealthDataType.bloodPressureSystolic,
-    HealthDataType.bloodPressureDiastolic,
-    HealthDataType.weight,
-    HealthDataType.height,
-    HealthDataType.bodyFat,
-    HealthDataType.oxygenSaturation,
-    HealthDataType.bodyTemperature,
+    HealthDataType.steps,           // 步数 - 华为支持写入
+    HealthDataType.glucose,         // 血糖 - 华为支持写入
+    HealthDataType.bloodPressureSystolic,   // 收缩压 - 华为支持写入
+    HealthDataType.bloodPressureDiastolic,  // 舒张压 - 华为支持写入
+    HealthDataType.weight,          // 体重 - 华为支持写入
+    HealthDataType.height,          // 身高 - 华为支持写入
+    HealthDataType.bodyFat,         // 体脂率 - 华为支持写入
+    HealthDataType.oxygenSaturation,  // iOS支持
+    HealthDataType.bodyTemperature,   // iOS支持
   ];
 
   @override
@@ -324,11 +325,16 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
         return;
       }
 
+      // 华为Health Kit默认只能查询授权后的数据
+      // 不申请历史数据权限，只查询今天的数据（参考官方demo）
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day, 0, 0, 0);
+
       final result = await HealthBridge.readHealthData(
         platform: _selectedPlatform!,
         dataType: dataType,
-        startDate: DateTime.now().subtract(const Duration(days: 30)),
-        endDate: DateTime.now(),
+        startDate: todayStart,  // 今天00:00:00
+        endDate: now,  // 现在
         limit: 100,
       );
 
@@ -505,6 +511,8 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
   /// 获取数据类型的示例数据
   Map<String, dynamic>? _getSampleDataForType(HealthDataType dataType) {
     switch (dataType) {
+      case HealthDataType.steps:
+        return {'value': 1000.0, 'unit': 'steps'};
       case HealthDataType.glucose:
         return {'value': 5.6, 'unit': 'mmol/L'};
       case HealthDataType.bloodPressureSystolic:
@@ -1155,6 +1163,11 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
 
   /// 数据读取标签页
   Widget _buildReadDataTab() {
+    // 使用平台实际支持的数据类型，而不是硬编码的_allSupportedTypes
+    final supportedTypes = _readableSupportedTypes.isNotEmpty
+        ? _readableSupportedTypes
+        : _allSupportedTypes;
+
     return SingleChildScrollView(
       controller: _readDataScrollController,
       padding: const EdgeInsets.all(16.0),
@@ -1173,12 +1186,38 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
                   ),
                   const Divider(),
                   const SizedBox(height: 8),
-                  Text(
-                    '点击"读取"按钮后会显示数据详情列表（最近30天，最多100条）',
-                    style: Theme.of(context).textTheme.bodySmall,
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '显示当前平台支持的 ${supportedTypes.length} 种数据类型',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '点击"读取"按钮后会显示今天的数据（最多100条）',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  ..._allSupportedTypes.map((type) {
+                  ...supportedTypes.map((type) {
                     final dataList = _healthDataCache[type];
                     final hasData = dataList != null && dataList.isNotEmpty;
 
@@ -1205,10 +1244,17 @@ class _HealthBridgeTestDemoState extends State<HealthBridgeTestDemo> with Single
                                   fontSize: 12,
                                 ),
                               )
-                            : null,
+                            : Text(
+                                type.unit,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
                         trailing: IconButton(
                           icon: const Icon(Icons.download),
                           onPressed: () => _readHealthData(type),
+                          tooltip: '读取${type.displayName}',
                         ),
                         onTap: hasData
                             ? () => _showDataDetailDialog(type, dataList)

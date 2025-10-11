@@ -1,0 +1,49 @@
+{
+  "agcgw_all": {
+    "SG": "connect-dra.dbankcloud.cn",
+    "SG_back": "connect-dra.hispace.hicloud.com",
+    "CN": "connect-drcn.dbankcloud.cn",
+    "CN_back": "connect-drcn.hispace.hicloud.com",
+    "RU": "connect-drru.hispace.dbankcloud.ru",
+    "RU_back": "connect-drru.hispace.dbankcloud.cn",
+    "DE": "connect-dre.dbankcloud.cn",
+    "DE_back": "connect-dre.hispace.hicloud.com"
+  },
+  "websocketgw_all": {
+    "SG": "connect-ws-dra.hispace.dbankcloud.cn",
+    "SG_back": "connect-ws-dra.hispace.dbankcloud.com",
+    "CN": "connect-ws-drcn.hispace.dbankcloud.cn",
+    "CN_back": "connect-ws-drcn.hispace.dbankcloud.com",
+    "RU": "connect-ws-drru.hispace.dbankcloud.ru",
+    "RU_back": "connect-ws-drru.hispace.dbankcloud.cn",
+    "DE": "connect-ws-dre.hispace.dbankcloud.cn",
+    "DE_back": "connect-ws-dre.hispace.dbankcloud.com"
+  },
+  "client": {
+    "cp_id": "30086000693317405",
+    "product_id": "388421841222281159",
+    "client_id": "1457333539832896384",
+    "client_secret": "97993ACC4D8BD3A6151B3F8162FCD41AD830C8F18B6F53B75C2C96628A1A2418",
+    "project_id": "388421841222281159",
+    "app_id": "108913819",
+    "api_key": "DQEDAMqQ0BquNq9kda6SJG0CU5X9bzUrHkM6IiZ+E7MgMyatlLu0ca9iCrYoYfixP4xl84AfrK31frryMeUPcGhTEEyuWYR2xLPfYA==",
+    "package_name": "com.novo.care.novo_care_app"
+  },
+  "oauth_client": { "client_id": "108913819", "client_type": 1 },
+  "app_info": {
+    "app_id": "108913819",
+    "package_name": "com.novo.care.novo_care_app"
+  },
+  "configuration_version": "3.0",
+  "appInfos": [
+    {
+      "package_name": "com.novo.care.novo_care_app",
+      "client": { "app_id": "108913819" },
+      "app_info": {
+        "package_name": "com.novo.care.novo_care_app",
+        "app_id": "108913819"
+      },
+      "oauth_client": { "client_type": 1, "client_id": "108913819" }
+    }
+  ]
+}

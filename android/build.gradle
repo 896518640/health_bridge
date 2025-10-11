@@ -6,6 +6,7 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://developer.huawei.com/repo/' }
     }
 
     dependencies {
@@ -18,6 +19,7 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://developer.huawei.com/repo/' }
     }
 }
 
@@ -47,21 +49,24 @@ android {
     }
 
     defaultConfig {
-        minSdk = 21
+        minSdk = 23  // Huawei HMS Health Kit requires minSdk 23
     }
 
     dependencies {
         // Samsung Health SDK - 使用compileOnly JAR避免AAR打包问题
         compileOnly files("libs/samsung-health-data-api-1.0.0.jar")
-        
+
+        // Huawei HMS Health Kit SDK
+        implementation 'com.huawei.hms:health:6.11.0.303'
+
         // 必要的Android依赖
         implementation "androidx.core:core-ktx:1.9.0"
         implementation "androidx.appcompat:appcompat:1.6.1"
-        
+
         // Kotlin协程支持
         implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
         implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4"
-        
+
         // 测试依赖
         testImplementation("org.jetbrains.kotlin:kotlin-test")
         testImplementation("org.mockito:mockito-core:5.0.0")
