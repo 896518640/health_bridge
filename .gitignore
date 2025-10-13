@@ -70,3 +70,9 @@ build/
 **/ios/Flutter/flutter_export_environment.sh
 **/ios/ServiceDefinitions.json
 **/ios/Runner/GeneratedPluginRegistrant.*
+.claude/
+docs/
+hms-health-demo-kotlin-master/
+hms-health-demo-java-master/
+hms-health-extention-demo-master/
+example/ohos/sign/

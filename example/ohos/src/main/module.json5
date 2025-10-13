@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "example",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
+}

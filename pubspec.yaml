@@ -6,7 +6,7 @@ repository: https://github.com/896518640/health_bridge
 issue_tracker: https://github.com/896518640/health_bridge/issues
 
 environment:
-  sdk: '>=3.4.1 <4.0.0'
+  sdk: '>=3.4.0 <4.0.0'
   flutter: '>=3.3.0'
 
 dependencies:
@@ -41,6 +41,9 @@ flutter:
         pluginClass: HealthBridgePlugin
       ios:
         pluginClass: HealthBridgePlugin
+      ohos:
+        pluginClass: HealthBridgePlugin
+        ohosPlatformClass: HealthBridgePlugin
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:

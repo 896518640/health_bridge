@@ -4,6 +4,9 @@ import 'pages/permission_management_page.dart';
 import 'pages/data_reading_page.dart';
 
 void main() {
+  print('========================================');
+  print('Health Bridge Demo 应用启动');
+  print('========================================');
   runApp(const MyApp());
 }
 
@@ -45,11 +48,20 @@ class _HomePageState extends State<HomePage> {
 
   /// 初始化平台
   Future<void> _initPlatform() async {
+    print('>>> 开始初始化平台...');
     setState(() => _isLoading = true);
 
     try {
+      print('>>> 获取平台版本...');
       final version = await HealthBridge.getPlatformVersion() ?? '未知';
+      print('>>> 平台版本: $version');
+
+      print('>>> 获取可用健康平台...');
       final platforms = await HealthBridge.getAvailableHealthPlatforms();
+      print('>>> 可用平台数量: ${platforms.length}');
+      for (var platform in platforms) {
+        print('    - ${platform.displayName} (${platform.key})');
+      }
 
       if (!mounted) return;
 
@@ -58,9 +70,12 @@ class _HomePageState extends State<HomePage> {
         _availablePlatforms = platforms;
         if (platforms.isNotEmpty) {
           _selectedPlatform = platforms.first;
+          print('>>> 默认选择平台: ${platforms.first.displayName}');
         }
       });
+      print('>>> 平台初始化完成!');
     } catch (e) {
+      print('!!! 初始化失败: $e');
       _showError('初始化失败: $e');
     } finally {
       setState(() => _isLoading = false);
@@ -71,6 +86,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _initializeHealthPlatform() async {
     if (_selectedPlatform == null) return;
 
+    print('>>> 开始初始化健康平台: ${_selectedPlatform!.displayName}');
     setState(() => _isLoading = true);
 
     try {
@@ -78,15 +94,21 @@ class _HomePageState extends State<HomePage> {
         _selectedPlatform!,
       );
 
+      print('>>> 初始化结果: ${result.status}');
+      print('>>> 消息: ${result.message}');
+
       if (!mounted) return;
 
       if (result.isSuccess) {
         setState(() => _isInitialized = true);
+        print('>>> ✓ ${_selectedPlatform!.displayName} 初始化成功!');
         _showSuccess('${_selectedPlatform!.displayName} 初始化成功');
       } else {
+        print('!!! 初始化失败: ${result.message}');
         _showError('初始化失败: ${result.message}');
       }
     } catch (e) {
+      print('!!! 初始化异常: $e');
       _showError('初始化异常: $e');
     } finally {
       setState(() => _isLoading = false);

@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "health_bridge",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
+}
