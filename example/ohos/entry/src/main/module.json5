@@ -29,12 +29,34 @@
             "actions": [
               "action.system.home"
             ]
+          },
+          {
+            "uris": [
+              {
+                "scheme": "https",
+                "host": "oauth-login.cloud.huawei.com"
+              },
+              {
+                "scheme": "https",
+                "host": "oauth-login1.cloud.huawei.com"
+              },
+              {
+                "scheme": "https",
+                "host": "oauth-api.cloud.huawei.com"
+              },
+              {
+                "scheme": "https",
+                "host": "test-novocareapp.novocare.com.cn"
+              }
+            ]
           }
         ]
       }
     ],
     "requestPermissions": [
-      {"name" :  "ohos.permission.INTERNET"},
+      {
+        "name": "ohos.permission.INTERNET"
+      }
     ]
   }
 }

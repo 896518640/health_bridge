@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:health_bridge/health_bridge.dart';
 import 'pages/permission_management_page.dart';
 import 'pages/data_reading_page.dart';
+import 'pages/huawei_oauth_test_page.dart';
 
 void main() {
   print('========================================');
@@ -59,7 +60,7 @@ class _HomePageState extends State<HomePage> {
       print('>>> 获取可用健康平台...');
       final platforms = await HealthBridge.getAvailableHealthPlatforms();
       print('>>> 可用平台数量: ${platforms.length}');
-      for (var platform in platforms) {
+      for (var platform in platforms) { 
         print('    - ${platform.displayName} (${platform.key})');
       }
 
@@ -418,6 +419,44 @@ class _HomePageState extends State<HomePage> {
                       ),
                       trailing: const Icon(Icons.arrow_forward_ios),
                       onTap: _openDataReading,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // OAuth 测试
+                  Card(
+                    elevation: 2,
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.login,
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                      title: const Text(
+                        'OAuth 授权测试',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        '测试华为帐号 OAuth 授权流程',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const HuaweiOAuthTestPage(),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 24),

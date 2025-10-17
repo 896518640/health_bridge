@@ -491,6 +491,42 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
     }
   }
 
+  // ========== OAuth 相关方法 ==========
+
+  /// 打开浏览器
+  Future<bool> openBrowser(String url) async {
+    try {
+      final result = await methodChannel.invokeMethod<bool>(
+        'openBrowser',
+        {'url': url},
+      );
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Error opening browser: $e');
+      return false;
+    }
+  }
+
+  /// 打开 OAuth WebView（鸿蒙专用）
+  Future<bool> showOAuthWebView({
+    required String authUrl,
+    required String redirectUri,
+  }) async {
+    try {
+      final result = await methodChannel.invokeMethod<bool>(
+        'showOAuthWebView',
+        {
+          'authUrl': authUrl,
+          'redirectUri': redirectUri,
+        },
+      );
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Error showing OAuth WebView: $e');
+      return false;
+    }
+  }
+
   /// 深度转换 Map，处理嵌套的 Map 和 List
   Map<String, dynamic> _deepConvertMap(Map<dynamic, dynamic> map) {
     return map.map((key, value) {
