@@ -3,6 +3,7 @@ import 'package:health_bridge/health_bridge.dart';
 import 'pages/permission_management_page.dart';
 import 'pages/data_reading_page.dart';
 import 'pages/huawei_oauth_test_page.dart';
+import 'pages/cloud_data_reading_page.dart';
 
 void main() {
   print('========================================');
@@ -352,10 +353,24 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 功能入口
+                  // 📱 端侧功能
+                  Row(
+                    children: [
+                      Icon(Icons.phone_android, color: Colors.blue.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        '📱 端侧功能',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   Text(
-                    '功能入口',
-                    style: Theme.of(context).textTheme.titleLarge,
+                    '直接读取设备本地健康数据',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 12),
 
@@ -421,9 +436,50 @@ class _HomePageState extends State<HomePage> {
                       onTap: _openDataReading,
                     ),
                   ),
+                  const SizedBox(height: 24),
+
+                  // ☁️ 云侧功能
+                  Row(
+                    children: [
+                      Icon(Icons.cloud, color: Colors.orange.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        '☁️ 云侧功能',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: Colors.orange.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade300),
+                        ),
+                        child: Text(
+                          '仅华为',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.orange.shade900,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '通过华为账号授权，读取云端健康数据',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
                   const SizedBox(height: 12),
 
-                  // OAuth 测试
+                  // OAuth 授权测试
                   Card(
                     elevation: 2,
                     child: ListTile(
@@ -439,14 +495,14 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       title: const Text(
-                        'OAuth 授权测试',
+                        'OAuth 授权管理',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       subtitle: const Text(
-                        '测试华为帐号 OAuth 授权流程',
+                        '华为帐号 OAuth 授权流程测试',
                         style: TextStyle(fontSize: 12),
                       ),
                       trailing: const Icon(Icons.arrow_forward_ios),
@@ -454,6 +510,44 @@ class _HomePageState extends State<HomePage> {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (context) => const HuaweiOAuthTestPage(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 云侧数据读取
+                  Card(
+                    elevation: 2,
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.cloud_download,
+                          color: Colors.purple.shade700,
+                        ),
+                      ),
+                      title: const Text(
+                        '云侧数据读取',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        '读取华为云端健康数据（需先授权）',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const CloudDataReadingPage(),
                           ),
                         );
                       },

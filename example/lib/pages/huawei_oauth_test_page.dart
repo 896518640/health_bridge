@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:health_bridge/src/oauth/huawei_oauth_config.dart';
 import 'huawei_oauth_webview_page.dart';
+import 'cloud_data_reading_page.dart';
 import '../services/huawei_auth_service.dart';
 
 /// 华为 OAuth 测试页面（PKCE 模式）
@@ -38,11 +39,11 @@ class _HuaweiOAuthTestPageState extends State<HuaweiOAuthTestPage> {
       redirectUri: 'https://test-novocareapp.novocare.com.cn/api/app/huaweiKit/redirectUrl',
       scopes: [
         'openid',
-        'https://www.huawei.com/healthkit/heightweight.read',
-        // 'https://www.huawei.com/healthkit/bloodglucose.read',
+        // 'https://www.huawei.com/healthkit/heightweight.read',
+        'https://www.huawei.com/healthkit/bloodglucose.read',
         // 'https://www.huawei.com/healthkit/bloodpressure.read'
-        // 'https://www.huawei.com/healthkit/step.read',
-        // 'https://www.huawei.com/healthkit/step.write',
+        'https://www.huawei.com/healthkit/step.read',
+        // 'https://www.huawei.com/healthkit/step.write',  // 读取数据不需要写权限
       ],
       state: 'test_state_123451',
       codeChallengeMethod: 'S256', // 使用 S256 编码方法
@@ -439,6 +440,29 @@ class _HuaweiOAuthTestPageState extends State<HuaweiOAuthTestPage> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 去云侧读取数据按钮
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => CloudDataReadingPage(
+                        accessToken: _accessToken,
+                        clientId: _config.clientId,  // 传递 clientId
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.cloud_download),
+                label: const Text('去云侧读取数据'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  minimumSize: const Size.fromHeight(48),
                 ),
               ),
               const SizedBox(height: 16),
