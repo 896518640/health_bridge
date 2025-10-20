@@ -103,11 +103,6 @@ class HuaweiHealthApiService {
       );
 
       if (response.statusCode == 200) {
-        // 如果是血糖查询，打印原始响应
-        final dataTypes = request.polymerizeWith.map((e) => e.dataTypeName).toList();
-        // if (dataTypes.any((type) => type.contains('blood_glucose'))) {
-        //   debugPrint('[API响应] ${jsonEncode(response.data)}');
-        // }
         debugPrint('[API响应] ${jsonEncode(response.data)}');
         return PolymerizeResponse.fromJson(
             response.data as Map<String, dynamic>);
@@ -290,6 +285,69 @@ extension SamplePointBloodGlucoseExt on SamplePoint {
     for (final value in values) {
       if (value.fieldName == FieldNames.min) {
         return value.floatValue;
+      }
+    }
+    return null;
+  }
+}
+
+/// SamplePoint 扩展方法 - 血压相关
+extension SamplePointBloodPressureExt on SamplePoint {
+  /// 获取收缩压值
+  double? get systolicPressure {
+    for (final value in values) {
+      if (value.fieldName == FieldNames.systolicPressure) {
+        return value.floatValue;
+      }
+    }
+    return null;
+  }
+
+  /// 获取舒张压值
+  double? get diastolicPressure {
+    for (final value in values) {
+      if (value.fieldName == FieldNames.diastolicPressure) {
+        return value.floatValue;
+      }
+    }
+    return null;
+  }
+
+  /// 获取脉搏值
+  int? get sphygmus {
+    for (final value in values) {
+      if (value.fieldName == FieldNames.sphygmus) {
+        return value.integerValue;
+      }
+    }
+    return null;
+  }
+
+  /// 获取测量姿势
+  int? get measurePosture {
+    for (final value in values) {
+      if (value.fieldName == FieldNames.measurePosture) {
+        return value.integerValue;
+      }
+    }
+    return null;
+  }
+
+  /// 获取身体姿势
+  int? get bodyPosture {
+    for (final value in values) {
+      if (value.fieldName == FieldNames.bodyPosture) {
+        return value.integerValue;
+      }
+    }
+    return null;
+  }
+
+  /// 获取测量手臂
+  int? get armSide {
+    for (final value in values) {
+      if (value.fieldName == FieldNames.armSide) {
+        return value.integerValue;
       }
     }
     return null;

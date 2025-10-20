@@ -359,6 +359,60 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
     });
   }
 
+  /// 【血压明细查询】读取最近7天的血压明细数据
+  /// 使用：采样数据明细查询 API (polymerize)
+  Future<void> _readBloodPressureDetail() async {
+    await _executeQuery('🩺 开始查询血压明细数据', () async {
+      // 计算时间范围（最近7天）
+      final now = DateTime.now();
+      final startTime =
+          now.subtract(const Duration(days: 6)).millisecondsSinceEpoch;
+      final endTime = now.millisecondsSinceEpoch;
+
+      // 构建请求
+      final request = PolymerizeRequest(
+        polymerizeWith: [
+          PolymerizeWith(dataTypeName: HuaweiDataTypes.bloodPressureInstantaneous),
+        ],
+        startTime: startTime,
+        endTime: endTime,
+      );
+
+      debugPrint('[云侧数据] 血压明细查询 - 请求: ${jsonEncode(request.toJson())}');
+
+      // 调用 API
+      final response = await _apiService!.polymerize(request);
+
+      setState(() => _cloudData['bloodPressureDetail'] = response);
+
+      // 处理响应数据
+      final allPoints = response.allSamplePoints;
+      final details = <String>[];
+
+      for (final point in allPoints) {
+        final systolic = point.systolicPressure;
+        final diastolic = point.diastolicPressure;
+        if (systolic != null && diastolic != null) {
+          final measureTime = point.startDateTime;
+          details.add(
+              '${measureTime.month}/${measureTime.day} ${_formatTimeDisplay(measureTime)} - ${systolic.toInt()}/${diastolic.toInt()} mmHg');
+        }
+      }
+
+      if (details.isNotEmpty) {
+        final preview = details.take(10).join('\n');
+        final moreInfo =
+            details.length > 10 ? '\n...还有 ${details.length - 10} 条记录' : '';
+
+        _showSuccess('✅ 血压明细数据查询成功\n'
+            '记录条数: ${details.length} 条\n'
+            '\n前10条明细:\n$preview$moreInfo');
+      } else {
+        _showSuccess('✅ 查询成功，但暂无血压明细数据');
+      }
+    });
+  }
+
   /// 【血糖统计查询】读取最近7天的每日血糖统计
   /// 使用：多日统计查询 API (dailyPolymerize)
   Future<void> _readBloodGlucoseStats() async {
@@ -417,88 +471,6 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
     });
   }
 
-  /// 读取云端血压数据
-  Future<void> _readCloudBloodPressure() async {
-    if (_accessToken == null) {
-      _showError('请先完成 OAuth 授权');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      debugPrint('[云侧数据] 开始读取血压数据');
-
-      // 计算时间范围（最近30天）
-      final endTime = DateTime.now().millisecondsSinceEpoch;
-      final startTime = DateTime.now()
-          .subtract(const Duration(days: 30))
-          .millisecondsSinceEpoch;
-
-      // 调用华为健康云端 API - 读取采样数据集
-      final response = await _dio.post(
-        'https://health-api.cloud.huawei.com/healthkit/v1/sampleSets:read',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $_accessToken',
-            'Content-Type': 'application/json',
-          },
-        ),
-        data: {
-          'dataType': 'com.huawei.blood.pressure', // 血压数据类型
-          'startTime': startTime,
-          'endTime': endTime,
-          'limit': 100,
-        },
-      );
-
-      debugPrint('[云侧数据] 血压数据响应: ${response.statusCode}');
-      debugPrint('[云侧数据] 响应数据: ${response.data}');
-
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final sampleSets = data['sampleSets'] as List?;
-
-        setState(() {
-          _cloudData['bloodPressure'] = data;
-        });
-
-        if (sampleSets != null && sampleSets.isNotEmpty) {
-          int totalRecords = 0;
-          for (var sampleSet in sampleSets) {
-            final samplePoints = sampleSet['samplePoints'] as List?;
-            if (samplePoints != null) {
-              totalRecords += samplePoints.length;
-            }
-          }
-          _showSuccess('✅ 云端血压数据读取成功\n共 $totalRecords 条记录');
-        } else {
-          _showSuccess('✅ 读取成功，但暂无血压数据');
-        }
-      } else {
-        _showError('读取失败: HTTP ${response.statusCode}');
-      }
-    } on DioException catch (e) {
-      debugPrint('[云侧数据] 读取失败: ${e.message}');
-      if (e.response != null) {
-        debugPrint('[云侧数据] 响应数据: ${e.response?.data}');
-        final errorData = e.response?.data;
-        final errorMsg = errorData is Map
-            ? (errorData['error']?['message'] ??
-                errorData['message'] ??
-                e.message)
-            : e.message;
-        _showError('读取失败: $errorMsg');
-      } else {
-        _showError('网络请求失败: ${e.message}');
-      }
-    } catch (e) {
-      debugPrint('[云侧数据] 未知错误: $e');
-      _showError('读取失败: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
 
   void _showSuccess(String message) {
     if (!mounted) return;
@@ -750,22 +722,26 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 其他健康数据
+                  // 血压查询
                   Text(
-                    '其他健康数据',
+                    '血压查询',
                     style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '查询血压明细数据',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 12),
 
-                  // 血压
-                  _buildDataCard(
+                  // 血压明细查询
+                  _buildStepQueryCard(
                     icon: Icons.favorite,
                     color: Colors.pink,
-                    title: '血压',
-                    subtitle: '读取云端血压记录',
-                    dataType: '血压',
-                    data: _cloudData['bloodPressure'],
-                    onRead: _readCloudBloodPressure,
+                    title: '最近7天血压明细',
+                    subtitle: '查询每次测量的详细血压数据',
+                    apiType: 'v2 polymerize 明细 (instantaneous.blood_pressure)',
+                    onRead: _readBloodPressureDetail,
                   ),
                   const SizedBox(height: 24),
 
@@ -809,79 +785,6 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildDataCard({
-    required IconData icon,
-    required MaterialColor color,
-    required String title,
-    required String subtitle,
-    required String dataType,
-    dynamic data,
-    required VoidCallback onRead,
-  }) {
-    return Card(
-      elevation: 2,
-      child: Column(
-        children: [
-          ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: color.shade700),
-            ),
-            title: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-            trailing: ElevatedButton(
-              onPressed: _accessToken != null ? onRead : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('读取'),
-            ),
-          ),
-          if (data != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color.shade50,
-                border: Border(
-                  top: BorderSide(color: Colors.grey.shade300),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '最新数据：',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: color.shade900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    data.toString(),
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
     );
   }
 

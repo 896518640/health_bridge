@@ -314,6 +314,8 @@ class HuaweiDataTypes {
 
   // 血压相关
   static const String bloodPressure = 'com.huawei.blood.pressure';
+  static const String bloodPressureInstantaneous =
+      'com.huawei.instantaneous.blood_pressure';
 
   // 心率相关
   static const String heartRate = 'com.huawei.continuous.heart_rate';
@@ -338,6 +340,10 @@ class FieldNames {
   // 血压字段
   static const String systolicPressure = 'systolic_pressure';
   static const String diastolicPressure = 'diastolic_pressure';
+  static const String sphygmus = 'sphygmus'; // 脉搏
+  static const String measurePosture = 'measure_posture'; // 测量姿势
+  static const String bodyPosture = 'body_posture'; // 身体姿势
+  static const String armSide = 'arm_side'; // 测量手臂
 
   // 心率字段
   static const String heartRate = 'heart_rate';
