@@ -14,6 +14,7 @@ dependencies:
     sdk: flutter
   plugin_platform_interface: ^2.0.2
   crypto: ^3.0.3  # For PKCE code_challenge generation
+  http: ^1.2.0    # For Huawei Cloud API requests
 
 dev_dependencies:
   flutter_test:
