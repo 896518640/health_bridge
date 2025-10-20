@@ -39,11 +39,9 @@ class _HuaweiOAuthTestPageState extends State<HuaweiOAuthTestPage> {
       redirectUri: 'https://test-novocareapp.novocare.com.cn/api/app/huaweiKit/redirectUrl',
       scopes: [
         'openid',
-        // 'https://www.huawei.com/healthkit/heightweight.read',
         'https://www.huawei.com/healthkit/bloodglucose.read',
-        // 'https://www.huawei.com/healthkit/bloodpressure.read'
+        'https://www.huawei.com/healthkit/bloodpressure.read',
         'https://www.huawei.com/healthkit/step.read',
-        // 'https://www.huawei.com/healthkit/step.write',  // 读取数据不需要写权限
       ],
       state: 'test_state_123451',
       codeChallengeMethod: 'S256', // 使用 S256 编码方法
