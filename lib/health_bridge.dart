@@ -5,3 +5,4 @@ export 'src/models/health_data.dart'; // 健康数据模型
 export 'src/models/health_platform.dart'; // 健康平台枚举
 export 'src/health_bridge_platform_interface.dart'; // 平台接口抽象基类
 export 'src/health_bridge_method_channel.dart'; // 方法通道实现
+export 'src/oauth/huawei_oauth_config.dart'; // 华为OAuth配置（供开发者使用）

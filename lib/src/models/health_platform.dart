@@ -87,7 +87,8 @@ enum HealthPlatform {
   samsungHealth('samsung_health', 'Samsung Health', 'Android'),
   appleHealth('apple_health', 'Apple Health', 'iOS'),
   googleFit('google_fit', 'Google Fit', 'Android'),
-  huaweiHealth('huawei_health', 'Huawei Health', 'Android');
+  huaweiHealth('huawei_health', 'Huawei Health', 'Android'),
+  huaweiCloud('huawei_cloud', 'Huawei Health Cloud', 'All');
 
   const HealthPlatform(this.key, this.displayName, this.platform);
 
@@ -106,6 +107,8 @@ enum HealthPlatform {
         return _googleFitCapabilities;
       case HealthPlatform.huaweiHealth:
         return _huaweiHealthCapabilities;
+      case HealthPlatform.huaweiCloud:
+        return _huaweiCloudCapabilities;
     }
   }
 
@@ -450,5 +453,35 @@ const List<PlatformCapability> _huaweiHealthCapabilities = [
     canWrite: false,
     requiresSpecialPermission: true,
     notes: 'Read-only support, requires manual review approval. Returns both systolic and diastolic values in metadata.',
+  ),
+];
+
+/// Huawei Health Cloud 能力映射
+/// 通过华为云侧 API 访问健康数据（需要 OAuth 授权）
+const List<PlatformCapability> _huaweiCloudCapabilities = [
+  // 步数
+  PlatformCapability(
+    dataType: HealthDataType.steps,
+    canRead: true,
+    canWrite: false,
+    notes: 'Cloud API access, requires OAuth authorization',
+  ),
+
+  // 血糖
+  PlatformCapability(
+    dataType: HealthDataType.glucose,
+    canRead: true,
+    canWrite: false,
+    requiresSpecialPermission: true,
+    notes: 'Cloud API access, requires OAuth authorization',
+  ),
+
+  // 血压
+  PlatformCapability(
+    dataType: HealthDataType.bloodPressure,
+    canRead: true,
+    canWrite: false,
+    requiresSpecialPermission: true,
+    notes: 'Cloud API access, requires OAuth authorization',
   ),
 ];

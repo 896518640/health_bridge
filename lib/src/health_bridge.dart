@@ -1,4 +1,5 @@
 import 'health_bridge_platform_interface.dart';
+import 'health_bridge_method_channel.dart';
 import 'models/health_data.dart';
 import 'models/health_platform.dart';
 
@@ -510,5 +511,110 @@ class HealthBridge {
       platform: platform,
       dataList: dataList,
     );
+  }
+
+  // ========== 华为云侧API ==========
+
+  /// 设置华为云侧API凭证
+  ///
+  /// 在读取云侧数据前必须先调用此方法设置凭证
+  ///
+  /// [accessToken] OAuth授权获取的访问令牌
+  /// [clientId] 华为AGC应用的Client ID
+  ///
+  /// 使用示例：
+  /// ```dart
+  /// // 1. 开发者自己完成OAuth授权，获取accessToken
+  /// final oauthResult = await myOAuthFlow();
+  ///
+  /// // 2. 设置凭证
+  /// await HealthBridge.setHuaweiCloudCredentials(
+  ///   accessToken: oauthResult.accessToken!,
+  ///   clientId: 'YOUR_CLIENT_ID',
+  /// );
+  ///
+  /// // 3. 现在可以读取云侧数据了
+  /// final result = await HealthBridge.readHealthData(
+  ///   platform: HealthPlatform.huaweiCloud,
+  ///   dataType: HealthDataType.steps,
+  ///   startDate: DateTime.now().subtract(Duration(days: 7)),
+  ///   endDate: DateTime.now(),
+  /// );
+  /// ```
+  static Future<void> setHuaweiCloudCredentials({
+    required String accessToken,
+    required String clientId,
+  }) async {
+    final instance = HealthBridgePlatform.instance;
+    if (instance is MethodChannelHealthBridge) {
+      await instance.setHuaweiCloudCredentials(
+        accessToken: accessToken,
+        clientId: clientId,
+      );
+    } else {
+      throw UnsupportedError('Cloud API is only supported with MethodChannelHealthBridge');
+    }
+  }
+
+  /// 清除华为云侧API凭证
+  ///
+  /// 清除已设置的云侧API凭证
+  static Future<void> clearCloudCredentials() async {
+    final instance = HealthBridgePlatform.instance;
+    if (instance is MethodChannelHealthBridge) {
+      await instance.clearCloudCredentials();
+    }
+  }
+
+  /// 读取华为云侧健康数据（支持指定查询类型）
+  ///
+  /// [dataType] 数据类型
+  /// [startTime] 开始时间（毫秒时间戳）
+  /// [endTime] 结束时间（毫秒时间戳）
+  /// [queryType] 查询类型：'detail'原子读取，'daily'按天统计，默认'detail'
+  ///
+  /// 使用示例：
+  /// ```dart
+  /// // 原子查询（详细数据）
+  /// final detailResult = await HealthBridge.readCloudHealthData(
+  ///   dataType: HealthDataType.steps,
+  ///   startTime: DateTime.now().subtract(Duration(days: 7)).millisecondsSinceEpoch,
+  ///   endTime: DateTime.now().millisecondsSinceEpoch,
+  ///   queryType: 'detail',
+  /// );
+  ///
+  /// // 统计查询（按天汇总）
+  /// final dailyResult = await HealthBridge.readCloudHealthData(
+  ///   dataType: HealthDataType.steps,
+  ///   startTime: DateTime.now().subtract(Duration(days: 7)).millisecondsSinceEpoch,
+  ///   endTime: DateTime.now().millisecondsSinceEpoch,
+  ///   queryType: 'daily',
+  /// );
+  /// ```
+  static Future<HealthDataResult> readCloudHealthData({
+    required HealthDataType dataType,
+    required int startTime,
+    required int endTime,
+    String queryType = 'detail',
+  }) async {
+    final instance = HealthBridgePlatform.instance;
+    if (instance is MethodChannelHealthBridge) {
+      if (instance.cloudClient == null) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: HealthPlatform.huaweiCloud,
+          message: 'Please call setHuaweiCloudCredentials first',
+        );
+      }
+
+      return await instance.cloudClient!.readHealthData(
+        dataType: dataType,
+        startTime: startTime,
+        endTime: endTime,
+        queryType: queryType,
+      );
+    } else {
+      throw UnsupportedError('Cloud API is only supported with MethodChannelHealthBridge');
+    }
   }
 }

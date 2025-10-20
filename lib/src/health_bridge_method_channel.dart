@@ -3,12 +3,19 @@ import 'package:flutter/services.dart';
 import 'health_bridge_platform_interface.dart';
 import 'models/health_data.dart';
 import 'models/health_platform.dart';
+import 'cloud/huawei_cloud_client.dart';
 
 /// HealthBridge的MethodChannel实现
 class MethodChannelHealthBridge extends HealthBridgePlatform {
   /// 用于与原生代码通信的方法通道
   @visibleForTesting
   final methodChannel = const MethodChannel('health_bridge');
+
+  /// 华为云侧API客户端实例
+  HuaweiCloudClient? _cloudClient;
+
+  /// 获取云侧客户端（仅供内部使用）
+  HuaweiCloudClient? get cloudClient => _cloudClient;
 
   @override
   Future<String?> getPlatformVersion() async {
@@ -390,6 +397,30 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
     int? limit,
   }) async {
     try {
+      // 条件路由：华为云侧平台走纯Dart实现
+      if (platform == HealthPlatform.huaweiCloud) {
+        if (_cloudClient == null) {
+          return HealthDataResult(
+            status: HealthDataStatus.error,
+            platform: platform,
+            message: 'Please call setHuaweiCloudCredentials first',
+          );
+        }
+
+        final now = DateTime.now();
+        final effectiveStartDate = startDate ?? now.subtract(const Duration(days: 7));
+        final effectiveEndDate = endDate ?? now;
+
+        // 默认使用原子查询（detail）
+        return await _cloudClient!.readHealthData(
+          dataType: dataType,
+          startTime: effectiveStartDate.millisecondsSinceEpoch,
+          endTime: effectiveEndDate.millisecondsSinceEpoch,
+          queryType: 'detail',
+        );
+      }
+
+      // 其他平台走原有MethodChannel逻辑
       final Map<String, dynamic> arguments = {
         'platform': platform.key,
         'dataType': dataType.key,
@@ -525,6 +556,26 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
       debugPrint('Error showing OAuth WebView: $e');
       return false;
     }
+  }
+
+  // ========== 云侧API凭证管理 ==========
+
+  /// 设置华为云侧API凭证
+  Future<void> setHuaweiCloudCredentials({
+    required String accessToken,
+    required String clientId,
+  }) async {
+    _cloudClient = HuaweiCloudClient(
+      accessToken: accessToken,
+      clientId: clientId,
+    );
+    debugPrint('[Cloud API] Credentials set successfully');
+  }
+
+  /// 清除云侧API凭证
+  Future<void> clearCloudCredentials() async {
+    _cloudClient = null;
+    debugPrint('[Cloud API] Credentials cleared');
   }
 
   /// 深度转换 Map，处理嵌套的 Map 和 List

@@ -1,8 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
-import '../services/huawei_health_api_service.dart';
-import '../services/huawei_health_api_models.dart';
+import 'package:health_bridge/health_bridge.dart';
 
 /// 云侧数据读取页面
 /// 通过华为账号 OAuth 授权后，读取云端健康数据
@@ -25,8 +22,6 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
   String? _accessToken;
   String? _clientId;
   final Map<String, dynamic> _cloudData = {};
-  late final Dio _dio;
-  HuaweiHealthApiService? _apiService;
 
   // 常量提示信息
   static const String _noStepsDeltaDataHint = '⚠️ 查询成功，但暂无步数增量明细数据\n\n'
@@ -39,23 +34,18 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
     super.initState();
     _accessToken = widget.accessToken;
     _clientId = widget.clientId;
-    _dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 30),
-    ));
     _checkAuthStatus();
   }
 
-  /// 检查授权状态
+  /// 检查授权状态并设置插件凭证
   Future<void> _checkAuthStatus() async {
     if (_accessToken != null && _clientId != null) {
       debugPrint(
           '[云侧数据] 已获取 Access Token: ${_accessToken!.substring(0, 20)}...');
-      // 初始化API服务
-      _apiService = HuaweiHealthApiService(
+      // 设置插件凭证
+      await HealthBridge.setHuaweiCloudCredentials(
         accessToken: _accessToken!,
         clientId: _clientId!,
-        dio: _dio,
       );
     } else {
       debugPrint('[云侧数据] 未获取到 Access Token');
@@ -63,11 +53,6 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
   }
 
   // ==================== 工具方法 ====================
-
-  /// 将DateTime转换为yyyyMMdd格式字符串
-  String _formatDateString(DateTime date) {
-    return '${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}';
-  }
 
   /// 格式化日期显示（M月D日）
   String _formatDateDisplay(DateTime date) {
@@ -84,7 +69,7 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
     String logPrefix,
     Future<void> Function() queryFn,
   ) async {
-    if (_apiService == null) {
+    if (_accessToken == null || _clientId == null) {
       _showError('请先完成 OAuth 授权');
       return;
     }
@@ -93,11 +78,8 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
     try {
       debugPrint('[云侧数据] $logPrefix');
       await queryFn();
-    } on HuaweiApiException catch (e) {
-      debugPrint('[云侧数据] API错误: ${e.message}');
-      _showError('查询失败: ${e.message}');
     } catch (e) {
-      debugPrint('[云侧数据] 未知错误: $e');
+      debugPrint('[云侧数据] 错误: $e');
       _showError('查询失败: $e');
     } finally {
       setState(() => _isLoading = false);
@@ -107,7 +89,7 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
   // ==================== 查询方法 ====================
 
   /// 【查询1】读取最近一周每天的步数总数
-  /// 使用：多日统计查询 API (dailyPolymerize) + steps.total
+  /// 使用插件API：readCloudHealthData with queryType='daily'
   Future<void> _readWeeklySteps() async {
     await _executeQuery('📅 开始查询最近7天每日步数总数', () async {
       // 计算日期范围
@@ -115,132 +97,106 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
       final endDay = DateTime(now.year, now.month, now.day);
       final startDay = endDay.subtract(const Duration(days: 6));
 
-      // 构建请求（修复：使用stepsTotal而不是stepsDelta）
-      final request = DailyPolymerizeRequest(
-        dataTypes: [HuaweiDataTypes.stepsDelta],
-        startDay: _formatDateString(startDay),
-        endDay: _formatDateString(endDay),
-        timeZone: '+0800',
+      // 使用插件API查询（统计模式）
+      final result = await HealthBridge.readCloudHealthData(
+        dataType: HealthDataType.steps,
+        startTime: startDay.millisecondsSinceEpoch,
+        endTime: endDay.millisecondsSinceEpoch,
+        queryType: 'daily',
       );
 
-      debugPrint('[云侧数据] 最近一周每天的步数总数 - 请求: ${jsonEncode(request.toJson())}');
+      if (result.isSuccess) {
+        setState(() => _cloudData['weeklySteps'] = result);
 
-      // 调用 API
-      final response = await _apiService!.dailyPolymerize(request);
-      setState(() => _cloudData['weeklySteps'] = response);
+        // 处理响应数据
+        int totalSteps = 0;
+        final dailySteps = <String>[];
 
-      // 处理响应数据
-      int totalSteps = 0;
-      final dailySteps = <String>[];
-
-      for (final group in response.groups) {
-        for (final sampleSet in group.sampleSets) {
-          for (final point in sampleSet.samplePoints) {
-            final steps = point.stepsValue;
-            if (steps != null) {
-              totalSteps += steps;
-              dailySteps.add('${_formatDateDisplay(group.date)}: $steps步');
-            }
-          }
+        for (final data in result.data) {
+          final steps = data.value?.toInt() ?? 0;
+          totalSteps += steps;
+          final date = DateTime.fromMillisecondsSinceEpoch(data.timestamp);
+          dailySteps.add('${_formatDateDisplay(date)}: $steps步');
         }
-      }
 
-      if (dailySteps.isNotEmpty) {
-        _showSuccess('✅ 最近一周步数查询成功\n'
-            '查询天数: ${dailySteps.length} 天\n'
-            '总步数: $totalSteps 步\n'
-            '${dailySteps.join('\n')}');
+        if (dailySteps.isNotEmpty) {
+          _showSuccess('✅ 最近一周步数查询成功\n'
+              '查询天数: ${dailySteps.length} 天\n'
+              '总步数: $totalSteps 步\n'
+              '${dailySteps.join('\n')}');
+        } else {
+          _showSuccess('✅ 查询成功，但暂无步数数据');
+        }
       } else {
-        _showSuccess('✅ 查询成功，但暂无步数数据');
+        _showError('查询失败: ${result.message}');
       }
     });
   }
 
   /// 【查询2】读取今天的步数增量明细
-  /// 使用：采样数据明细查询 API (polymerize)
+  /// 使用插件API：readCloudHealthData with queryType='detail'
   Future<void> _readTodayStepsDelta() async {
     await _executeQuery('📊 开始查询今天的步数增量明细', () async {
       // 计算今天的时间范围（从0点到现在）
       final now = DateTime.now();
-      final startTime =
-          DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
-      final endTime = now.millisecondsSinceEpoch;
+      final startTime = DateTime(now.year, now.month, now.day);
 
-      // 构建请求
-      final request = PolymerizeRequest(
-        polymerizeWith: [
-          PolymerizeWith(dataTypeName: HuaweiDataTypes.stepsDelta),
-        ],
-        startTime: startTime,
-        endTime: endTime,
+      // 使用插件API查询（原子模式）
+      final result = await HealthBridge.readCloudHealthData(
+        dataType: HealthDataType.steps,
+        startTime: startTime.millisecondsSinceEpoch,
+        endTime: now.millisecondsSinceEpoch,
+        queryType: 'detail',
       );
-      debugPrint('[云侧数据] 今天的步数增量明细 - 请求: ${jsonEncode(request.toJson())}');
 
-      // 调用 API
-      final response = await _apiService!.polymerize(request);
-      setState(() => _cloudData['todayDelta'] = response);
+      if (result.isSuccess) {
+        setState(() => _cloudData['todayDelta'] = result);
 
-      // 处理响应数据
-      final allPoints = response.allSamplePoints;
-      int totalSteps = 0;
-      int recordCount = 0;
+        // 处理响应数据
+        int totalSteps = 0;
+        int recordCount = result.data.length;
 
-      for (final point in allPoints) {
-        final steps = point.stepsValue;
-        if (steps != null) {
-          totalSteps += steps;
-          recordCount++;
+        for (final data in result.data) {
+          totalSteps += data.value?.toInt() ?? 0;
         }
-      }
 
-      if (recordCount > 0) {
-        _showSuccess('✅ 今天步数增量查询成功\n'
-            '记录条数: $recordCount 条\n'
-            '总步数: $totalSteps 步');
+        if (recordCount > 0) {
+          _showSuccess('✅ 今天步数增量查询成功\n'
+              '记录条数: $recordCount 条\n'
+              '总步数: $totalSteps 步');
+        } else {
+          _showSuccess(_noStepsDeltaDataHint);
+        }
       } else {
-        _showSuccess(_noStepsDeltaDataHint);
+        _showError('查询失败: ${result.message}');
       }
     });
   }
 
   /// 【查询3】读取昨天的步数总数
-  /// 使用：多日统计查询 API (dailyPolymerize) + steps.total
+  /// 使用插件API：readCloudHealthData with queryType='daily'
   Future<void> _readYesterdayTotal() async {
     await _executeQuery('📈 开始查询昨天的步数总数', () async {
       // 计算昨天的日期
       final yesterday = DateTime.now().subtract(const Duration(days: 1));
-      final yesterdayStr = _formatDateString(yesterday);
+      final startDay = DateTime(yesterday.year, yesterday.month, yesterday.day);
+      final endDay = DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59);
 
-      // 构建请求
-      final request = DailyPolymerizeRequest(
-        dataTypes: [HuaweiDataTypes.stepsDelta],
-        startDay: yesterdayStr,
-        endDay: yesterdayStr, // 同一天
-        timeZone: '+0800',
+      // 使用插件API查询（统计模式）
+      final result = await HealthBridge.readCloudHealthData(
+        dataType: HealthDataType.steps,
+        startTime: startDay.millisecondsSinceEpoch,
+        endTime: endDay.millisecondsSinceEpoch,
+        queryType: 'daily',
       );
 
-      debugPrint('[云侧数据] 昨天的步数总数 - 请求: ${jsonEncode(request.toJson())}');
-
-      // 调用 API
-      final response = await _apiService!.dailyPolymerize(request);
-      setState(() => _cloudData['yesterdayTotal'] = response);
-
-      // 处理响应数据
-      if (response.groups.isNotEmpty) {
-        final group = response.groups[0];
-        final allPoints = <SamplePoint>[];
-        for (final sampleSet in group.sampleSets) {
-          allPoints.addAll(sampleSet.samplePoints);
-        }
-
-        if (allPoints.isNotEmpty) {
-          final steps = allPoints[0].stepsValue ?? 0;
-          _showSuccess('✅ 昨天步数总数查询成功\n'
-              '日期: ${_formatDateDisplay(yesterday)}\n'
-              '总步数: $steps 步');
-        } else {
-          _showSuccess('✅ 查询成功，但昨天暂无步数数据');
-        }
+      if (result.isSuccess && result.data.isNotEmpty) {
+        setState(() => _cloudData['yesterdayTotal'] = result);
+        
+        final steps = result.data[0].value?.toInt() ?? 0;
+        _showSuccess('✅ 昨天步数总数查询成功\n'
+            '日期: ${_formatDateDisplay(yesterday)}\n'
+            '总步数: $steps 步');
       } else {
         _showSuccess('✅ 查询成功，但昨天暂无步数数据');
       }
@@ -248,173 +204,154 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
   }
 
   /// 【查询4】读取昨天的步数分段增量
-  /// 使用：采样数据明细查询 API (polymerize)
+  /// 使用插件API：readCloudHealthData with queryType='detail'
   Future<void> _readYesterdayDelta() async {
     await _executeQuery('🔍 开始查询昨天的步数分段增量', () async {
       // 计算昨天的时间范围
       final yesterday = DateTime.now().subtract(const Duration(days: 1));
-      final startTime = DateTime(yesterday.year, yesterday.month, yesterday.day)
-          .millisecondsSinceEpoch;
-      final endTime =
-          DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59)
-              .millisecondsSinceEpoch;
+      final startTime = DateTime(yesterday.year, yesterday.month, yesterday.day);
+      final endTime = DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59);
 
-      // 构建请求
-      final request = PolymerizeRequest(
-        polymerizeWith: [
-          PolymerizeWith(dataTypeName: HuaweiDataTypes.stepsDelta),
-        ],
-        startTime: startTime,
-        endTime: endTime,
+      // 使用插件API查询（原子模式）
+      final result = await HealthBridge.readCloudHealthData(
+        dataType: HealthDataType.steps,
+        startTime: startTime.millisecondsSinceEpoch,
+        endTime: endTime.millisecondsSinceEpoch,
+        queryType: 'detail',
       );
 
-      debugPrint('[云侧数据] 昨天的步数分段增量 - 请求: ${jsonEncode(request.toJson())}');
+      if (result.isSuccess) {
+        setState(() => _cloudData['yesterdayDelta'] = result);
 
-      // 调用 API
-      final response = await _apiService!.polymerize(request);
-      setState(() => _cloudData['yesterdayDelta'] = response);
+        int totalSteps = 0;
+        final details = <String>[];
 
-      // 处理响应数据
-      final allPoints = response.allSamplePoints;
-      int totalSteps = 0;
-      final details = <String>[];
-
-      for (final point in allPoints) {
-        final steps = point.stepsValue;
-        if (steps != null) {
+        for (final data in result.data) {
+          final steps = data.value?.toInt() ?? 0;
           totalSteps += steps;
-          final detail =
-              '${_formatTimeDisplay(point.startDateTime)} - ${_formatTimeDisplay(point.endDateTime)}: $steps步';
-          details.add(detail);
+          
+          final startTimeStr = data.metadata['startTime'] ?? '';
+          final endTimeStr = data.metadata['endTime'] ?? '';
+          final start = DateTime.parse(startTimeStr);
+          final end = DateTime.parse(endTimeStr);
+          
+          details.add('${_formatTimeDisplay(start)} - ${_formatTimeDisplay(end)}: $steps步');
         }
-      }
 
-      if (details.isNotEmpty) {
-        // 只显示前10条明细
-        final preview = details.take(10).join('\n');
-        final moreInfo =
-            details.length > 10 ? '\n...还有 ${details.length - 10} 条记录' : '';
+        if (details.isNotEmpty) {
+          final preview = details.take(10).join('\n');
+          final moreInfo =
+              details.length > 10 ? '\n...还有 ${details.length - 10} 条记录' : '';
 
-        _showSuccess('✅ 昨天步数分段增量查询成功\n'
-            '日期: ${_formatDateDisplay(yesterday)}\n'
-            '记录条数: ${details.length} 条\n'
-            '总步数: $totalSteps 步\n'
-            '\n前10条明细:\n$preview$moreInfo');
+          _showSuccess('✅ 昨天步数分段增量查询成功\n'
+              '日期: ${_formatDateDisplay(yesterday)}\n'
+              '记录条数: ${details.length} 条\n'
+              '总步数: $totalSteps 步\n'
+              '\n前10条明细:\n$preview$moreInfo');
+        } else {
+          _showSuccess(_noStepsDeltaDataHint);
+        }
       } else {
-        _showSuccess(_noStepsDeltaDataHint);
+        _showError('查询失败: ${result.message}');
       }
     });
   }
 
   /// 【血糖明细查询】读取最近7天的血糖明细数据
-  /// 使用：采样数据明细查询 API (polymerize)
+  /// 使用插件API：readCloudHealthData with queryType='detail'
   Future<void> _readBloodGlucoseDetail() async {
     await _executeQuery('🩸 开始查询血糖明细数据', () async {
       // 计算时间范围（最近7天）
       final now = DateTime.now();
-      final startTime =
-          now.subtract(const Duration(days: 6)).millisecondsSinceEpoch;
-      final endTime = now.millisecondsSinceEpoch;
 
-      // 构建请求
-      final request = PolymerizeRequest(
-        polymerizeWith: [
-          PolymerizeWith(dataTypeName: HuaweiDataTypes.bloodGlucoseInstantaneous),
-        ],
-        startTime: startTime,
-        endTime: endTime,
+      // 使用插件API查询
+      final result = await HealthBridge.readCloudHealthData(
+        dataType: HealthDataType.glucose,
+        startTime: now.subtract(const Duration(days: 6)).millisecondsSinceEpoch,
+        endTime: now.millisecondsSinceEpoch,
+        queryType: 'detail',
       );
 
-      debugPrint('[云侧数据] 血糖明细查询 - 请求: ${jsonEncode(request.toJson())}');
+      if (result.isSuccess) {
+        setState(() => _cloudData['bloodGlucoseDetail'] = result);
 
-      // 调用 API (在API service层会打印原始响应JSON)
-      final response = await _apiService!.polymerize(request);
-
-      setState(() => _cloudData['bloodGlucoseDetail'] = response);
-
-      // 处理响应数据
-      final allPoints = response.allSamplePoints;
-      final details = <String>[];
-
-      for (final point in allPoints) {
-        final glucoseValue = point.bloodGlucoseValue;
-        if (glucoseValue != null) {
-          final measureTime = point.startDateTime;
-          details.add(
-              '${measureTime.month}/${measureTime.day} ${_formatTimeDisplay(measureTime)} - $glucoseValue mmol/L');
+        final details = <String>[];
+        for (final data in result.data) {
+          final glucoseValue = data.value;
+          if (glucoseValue != null) {
+            final measureTime = DateTime.fromMillisecondsSinceEpoch(data.timestamp);
+            details.add(
+                '${measureTime.month}/${measureTime.day} ${_formatTimeDisplay(measureTime)} - $glucoseValue mmol/L');
+          }
         }
-      }
 
-      if (details.isNotEmpty) {
-        final preview = details.take(10).join('\n');
-        final moreInfo =
-            details.length > 10 ? '\n...还有 ${details.length - 10} 条记录' : '';
+        if (details.isNotEmpty) {
+          final preview = details.take(10).join('\n');
+          final moreInfo =
+              details.length > 10 ? '\n...还有 ${details.length - 10} 条记录' : '';
 
-        _showSuccess('✅ 血糖明细数据查询成功\n'
-            '记录条数: ${details.length} 条\n'
-            '\n前10条明细:\n$preview$moreInfo');
+          _showSuccess('✅ 血糖明细数据查询成功\n'
+              '记录条数: ${details.length} 条\n'
+              '\n前10条明细:\n$preview$moreInfo');
+        } else {
+          _showSuccess('✅ 查询成功，但暂无血糖明细数据');
+        }
       } else {
-        _showSuccess('✅ 查询成功，但暂无血糖明细数据');
+        _showError('查询失败: ${result.message}');
       }
     });
   }
 
   /// 【血压明细查询】读取最近7天的血压明细数据
-  /// 使用：采样数据明细查询 API (polymerize)
+  /// 使用插件API：readCloudHealthData with queryType='detail'
   Future<void> _readBloodPressureDetail() async {
     await _executeQuery('🩺 开始查询血压明细数据', () async {
       // 计算时间范围（最近7天）
       final now = DateTime.now();
-      final startTime =
-          now.subtract(const Duration(days: 6)).millisecondsSinceEpoch;
-      final endTime = now.millisecondsSinceEpoch;
 
-      // 构建请求
-      final request = PolymerizeRequest(
-        polymerizeWith: [
-          PolymerizeWith(dataTypeName: HuaweiDataTypes.bloodPressureInstantaneous),
-        ],
-        startTime: startTime,
-        endTime: endTime,
+      // 使用插件API查询
+      final result = await HealthBridge.readCloudHealthData(
+        dataType: HealthDataType.bloodPressure,
+        startTime: now.subtract(const Duration(days: 6)).millisecondsSinceEpoch,
+        endTime: now.millisecondsSinceEpoch,
+        queryType: 'detail',
       );
 
-      debugPrint('[云侧数据] 血压明细查询 - 请求: ${jsonEncode(request.toJson())}');
+      if (result.isSuccess) {
+        setState(() => _cloudData['bloodPressureDetail'] = result);
 
-      // 调用 API
-      final response = await _apiService!.polymerize(request);
-
-      setState(() => _cloudData['bloodPressureDetail'] = response);
-
-      // 处理响应数据
-      final allPoints = response.allSamplePoints;
-      final details = <String>[];
-
-      for (final point in allPoints) {
-        final systolic = point.systolicPressure;
-        final diastolic = point.diastolicPressure;
-        if (systolic != null && diastolic != null) {
-          final measureTime = point.startDateTime;
-          details.add(
-              '${measureTime.month}/${measureTime.day} ${_formatTimeDisplay(measureTime)} - ${systolic.toInt()}/${diastolic.toInt()} mmHg');
+        final details = <String>[];
+        for (final data in result.data) {
+          // 血压值在metadata中
+          final systolic = data.metadata['systolic_pressure'] as double?;
+          final diastolic = data.metadata['diastolic_pressure'] as double?;
+          
+          if (systolic != null && diastolic != null) {
+            final measureTime = DateTime.fromMillisecondsSinceEpoch(data.timestamp);
+            details.add(
+                '${measureTime.month}/${measureTime.day} ${_formatTimeDisplay(measureTime)} - ${systolic.toInt()}/${diastolic.toInt()} mmHg');
+          }
         }
-      }
 
-      if (details.isNotEmpty) {
-        final preview = details.take(10).join('\n');
-        final moreInfo =
-            details.length > 10 ? '\n...还有 ${details.length - 10} 条记录' : '';
+        if (details.isNotEmpty) {
+          final preview = details.take(10).join('\n');
+          final moreInfo =
+              details.length > 10 ? '\n...还有 ${details.length - 10} 条记录' : '';
 
-        _showSuccess('✅ 血压明细数据查询成功\n'
-            '记录条数: ${details.length} 条\n'
-            '\n前10条明细:\n$preview$moreInfo');
+          _showSuccess('✅ 血压明细数据查询成功\n'
+              '记录条数: ${details.length} 条\n'
+              '\n前10条明细:\n$preview$moreInfo');
+        } else {
+          _showSuccess('✅ 查询成功，但暂无血压明细数据');
+        }
       } else {
-        _showSuccess('✅ 查询成功，但暂无血压明细数据');
+        _showError('查询失败: ${result.message}');
       }
     });
   }
 
   /// 【血糖统计查询】读取最近7天的每日血糖统计
-  /// 使用：多日统计查询 API (dailyPolymerize)
+  /// 使用插件API：readCloudHealthData with queryType='daily'
   Future<void> _readBloodGlucoseStats() async {
     await _executeQuery('📊 开始查询血糖统计数据', () async {
       // 计算日期范围
@@ -422,51 +359,40 @@ class _CloudDataReadingPageState extends State<CloudDataReadingPage> {
       final endDay = DateTime(now.year, now.month, now.day);
       final startDay = endDay.subtract(const Duration(days: 6));
 
-      // 构建请求
-      final request = DailyPolymerizeRequest(
-        dataTypes: [HuaweiDataTypes.bloodGlucoseInstantaneous],
-        startDay: _formatDateString(startDay),
-        endDay: _formatDateString(endDay),
-        timeZone: '+0800',
+      // 使用插件API查询（统计模式）
+      final result = await HealthBridge.readCloudHealthData(
+        dataType: HealthDataType.glucose,
+        startTime: startDay.millisecondsSinceEpoch,
+        endTime: endDay.millisecondsSinceEpoch,
+        queryType: 'daily',
       );
 
-      debugPrint('[云侧数据] 血糖统计查询 - 请求: ${jsonEncode(request.toJson())}');
+      if (result.isSuccess) {
+        setState(() => _cloudData['bloodGlucoseStats'] = result);
 
-      // 调用 API (在API service层会打印原始响应JSON)
-      final response = await _apiService!.dailyPolymerize(request);
+        final dailyStats = <String>[];
+        for (final data in result.data) {
+          // 从metadata中获取统计值
+          final avg = data.metadata['avg'] as double?;
+          final max = data.metadata['max'] as double?;
+          final min = data.metadata['min'] as double?;
 
-      setState(() => _cloudData['bloodGlucoseStats'] = response);
-
-      // 处理响应数据
-      final dailyStats = <String>[];
-
-      for (final group in response.groups) {
-        final allPoints = <SamplePoint>[];
-        for (final sampleSet in group.sampleSets) {
-          allPoints.addAll(sampleSet.samplePoints);
-        }
-
-        if (allPoints.isNotEmpty) {
-          // 使用API返回的统计字段（avg, max, min）
-          for (final point in allPoints) {
-            final avg = point.avgValue;
-            final max = point.maxValue;
-            final min = point.minValue;
-
-            if (avg != null && max != null && min != null) {
-              dailyStats.add(
-                  '${_formatDateDisplay(group.date)}: 平均${avg.toStringAsFixed(1)} / 最高${max.toStringAsFixed(1)} / 最低${min.toStringAsFixed(1)} mmol/L');
-            }
+          if (avg != null && max != null && min != null) {
+            final date = DateTime.fromMillisecondsSinceEpoch(data.timestamp);
+            dailyStats.add(
+                '${_formatDateDisplay(date)}: 平均${avg.toStringAsFixed(1)} / 最高${max.toStringAsFixed(1)} / 最低${min.toStringAsFixed(1)} mmol/L');
           }
         }
-      }
 
-      if (dailyStats.isNotEmpty) {
-        _showSuccess('✅ 血糖统计数据查询成功\n'
-            '统计天数: ${dailyStats.length} 天\n'
-            '\n每日统计:\n${dailyStats.join('\n')}');
+        if (dailyStats.isNotEmpty) {
+          _showSuccess('✅ 血糖统计数据查询成功\n'
+              '统计天数: ${dailyStats.length} 天\n'
+              '\n每日统计:\n${dailyStats.join('\n')}');
+        } else {
+          _showSuccess('✅ 查询成功，但暂无血糖统计数据');
+        }
       } else {
-        _showSuccess('✅ 查询成功，但暂无血糖统计数据');
+        _showError('查询失败: ${result.message}');
       }
     });
   }
