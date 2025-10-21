@@ -3,6 +3,7 @@ import 'package:health_bridge/health_bridge.dart';
 import 'pages/permission_management_page.dart';
 import 'pages/data_reading_page.dart';
 import 'pages/huawei_oauth_test_page.dart';
+import 'pages/huawei_oauth_test_page_v2.dart'; // 新增：半托管模式
 import 'pages/cloud_data_reading_page.dart';
 
 void main() {
@@ -479,33 +480,119 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 12),
 
-                  // OAuth 授权测试
+                  // OAuth 授权测试（新版 - 半托管模式）
                   Card(
                     elevation: 2,
                     child: ListTile(
                       leading: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
+                          color: Colors.purple.shade100,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
                           Icons.login,
-                          color: Colors.orange.shade700,
+                          color: Colors.purple.shade700,
                         ),
                       ),
-                      title: const Text(
-                        'OAuth 授权管理',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      title: Row(
+                        children: [
+                          const Text(
+                            'OAuth 授权管理',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade100,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.purple.shade300),
+                            ),
+                            child: Text(
+                              'V2 半托管',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Colors.purple.shade900,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       subtitle: const Text(
-                        '华为帐号 OAuth 授权流程测试',
+                        '华为帐号 OAuth 授权（推荐）\n使用 HuaweiOAuthHelper 半托管模式',
                         style: TextStyle(fontSize: 12),
                       ),
                       trailing: const Icon(Icons.arrow_forward_ios),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const HuaweiOAuthTestPageV2(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // OAuth 授权测试（旧版 - 仅供对比）
+                  Card(
+                    elevation: 1,
+                    color: Colors.grey.shade50,
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.login,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      title: Row(
+                        children: [
+                          Text(
+                            'OAuth 授权（旧版）',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.grey.shade400),
+                            ),
+                            child: Text(
+                              '完全手动',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      subtitle: Text(
+                        '仅供代码对比参考',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                      trailing: Icon(Icons.arrow_forward_ios, color: Colors.grey.shade400),
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(

@@ -31,6 +31,10 @@ class HuaweiOAuthConfig {
   /// PKCE 编码方法 (S256 或 plain，推荐 S256)
   final String codeChallengeMethod;
 
+  /// 访问类型 (offline: 返回 refresh_token, online: 不返回)
+  /// 默认 'offline' 以获取 refresh_token
+  final String accessType;
+
   HuaweiOAuthConfig({
     required this.clientId,
     required this.redirectUri,
@@ -39,6 +43,7 @@ class HuaweiOAuthConfig {
     this.display = 'touch',
     this.nonce,
     this.codeChallengeMethod = 'S256',
+    this.accessType = 'offline',
     String? codeVerifier,
   }) {
     // 如果没有提供 code_verifier，自动生成
@@ -108,6 +113,11 @@ class HuaweiOAuthConfig {
 
     if (nonce != null && nonce!.isNotEmpty) {
       params['nonce'] = nonce!;
+    }
+
+    // 添加 access_type 参数以获取 refresh_token
+    if (accessType.isNotEmpty) {
+      params['access_type'] = accessType;
     }
 
     final queryString = params.entries

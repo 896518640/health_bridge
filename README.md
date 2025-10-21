@@ -2,6 +2,37 @@
 
 A Flutter plugin for integrating health data across different platforms, providing unified access to health and fitness information.
 
+## 📚 Architecture Overview
+
+This plugin is organized into modular components for better maintainability:
+
+```
+lib/src/
+├── oauth/          # OAuth 2.0 authorization module (PKCE)
+│   ├── huawei_oauth_config.dart     # OAuth configuration
+│   ├── huawei_oauth_helper.dart     # OAuth helper (recommended Layer 2 API)
+│   └── huawei_auth_service.dart     # OAuth HTTP service
+├── cloud/          # Cloud-side data access module
+│   ├── huawei_cloud_client.dart     # Huawei Health Cloud API client
+│   └── huawei_cloud_models.dart     # Cloud API data models
+└── models/         # Common data models
+    ├── health_data.dart             # Health data types
+    └── health_platform.dart         # Platform definitions
+```
+
+### Module Responsibilities
+
+| Module | Purpose | Dependencies |
+|--------|---------|--------------|
+| **oauth** | User authentication, obtain access tokens | None |
+| **cloud** | Access health data via Cloud APIs | Requires access_token from oauth |
+| **models** | Shared data structures | None |
+
+**Typical workflow:**
+1. Use **oauth** module → Get `access_token` via OAuth 2.0 PKCE flow
+2. Use **cloud** module → Pass `access_token` to query health data from Huawei Cloud APIs
+3. Use **models** → Parse and convert data to unified format
+
 ## Platform Support
 
 | Platform | Status | Notes |
@@ -108,6 +139,472 @@ final heartRate = await healthPlugin.getHeartRate(
   endDate: DateTime.now(),
 );
 ```
+
+---
+
+## 华为 OAuth 集成指南（推荐 Layer 2 半托管方案）
+
+> ⚠️ **重要提示**：由于华为官方 PKCE 模式刷新 token 的接口文档存在问题，**refresh_token 功能暂时禁用**。当前版本建议在 access_token 过期后重新引导用户登录授权。我们正在与华为沟通解决此问题，待官方接口文档修复后会立即恢复该功能。
+
+### 为什么需要 OAuth？
+
+华为健康云侧 API 需要通过 OAuth 2.0 授权才能访问用户的健康数据。我们提供了**半托管的 OAuth 辅助类**，让您可以：
+
+- ✅ 使用插件提供的核心 OAuth 逻辑（URL 生成、PKCE、Token 交换）
+- ✅ 使用自己的 WebView 实现（完全自定义 UI 和业务逻辑）
+- ✅ 完全控制 Token 的存储方式
+- ✅ 轻松集成，无需深入了解 OAuth 2.0 和 PKCE 细节
+
+### 快速开始（5 步集成）
+
+#### 步骤 1：添加依赖
+
+确保已在 `pubspec.yaml` 中添加必要的依赖：
+
+```yaml
+dependencies:
+  health_bridge: ^0.0.1
+  webview_flutter: ^4.4.0  # 用于自定义 WebView
+  flutter_secure_storage: ^9.0.0  # 推荐用于安全存储 Token
+```
+
+#### 步骤 2：初始化 OAuth 辅助类
+
+```dart
+import 'package:health_bridge/health_bridge.dart';
+
+final oauthHelper = HuaweiOAuthHelper(
+  config: HuaweiOAuthConfig(
+    clientId: 'your_client_id',  // 从华为开发者控制台获取
+    redirectUri: 'https://your-domain.com/callback',  // 您的回调地址
+    scopes: [
+      'openid',
+      'https://www.huawei.com/healthkit/step.read',
+      'https://www.huawei.com/healthkit/bloodpressure.read',
+    ],
+    state: 'random_state_${DateTime.now().millisecondsSinceEpoch}',
+    codeChallengeMethod: 'S256',  // PKCE 加密方法
+  ),
+);
+```
+
+#### 步骤 3：生成授权 URL 并在 WebView 中打开
+
+```dart
+import 'package:webview_flutter/webview_flutter.dart';
+
+// 生成授权 URL
+final authUrl = oauthHelper.generateAuthUrl();
+
+// 在您的自定义 WebView 中打开
+final webViewController = WebViewController()
+  ..setJavaScriptMode(JavaScriptMode.unrestricted)
+  ..setNavigationDelegate(
+    NavigationDelegate(
+      onNavigationRequest: (request) {
+        // 监听导航，检查是否是回调 URL
+        if (oauthHelper.isCallbackUrl(request.url)) {
+          // 拦截回调 URL
+          _handleCallback(request.url);
+          return NavigationDecision.prevent;
+        }
+        return NavigationDecision.navigate;
+      },
+    ),
+  )
+  ..loadRequest(Uri.parse(authUrl));
+
+// 在页面中显示 WebView
+Scaffold(
+  body: WebViewWidget(controller: webViewController),
+);
+```
+
+#### 步骤 4：解析回调并换取 Token
+
+```dart
+Future<void> _handleCallback(String callbackUrl) async {
+  // 解析回调 URL
+  final params = oauthHelper.parseCallback(callbackUrl);
+
+  if (params == null) {
+    print('❌ 解析失败');
+    return;
+  }
+
+  // 检查是否有错误
+  if (params['error'] != null) {
+    print('❌ 授权失败: ${params['error']}');
+    return;
+  }
+
+  // 获取授权码
+  final code = params['code'];
+  if (code == null) {
+    print('❌ 未获取到授权码');
+    return;
+  }
+
+  // 用授权码换取 Token
+  final result = await oauthHelper.exchangeToken(code);
+
+  if (result.isSuccess) {
+    print('✅ 授权成功！');
+    print('Access Token: ${result.accessToken}');
+    print('过期时间: ${result.expiresIn} 秒');
+
+    // 保存 Token（下一步）
+    await _saveToken(result);
+  } else {
+    print('❌ Token 交换失败: ${result.error}');
+  }
+}
+```
+
+#### 步骤 5：安全存储 Token（推荐）
+
+```dart
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+final storage = FlutterSecureStorage();
+
+// 保存 Token
+Future<void> _saveToken(HuaweiOAuthResult result) async {
+  await storage.write(key: 'access_token', value: result.accessToken);
+  await storage.write(key: 'refresh_token', value: result.refreshToken);
+
+  // 计算过期时间
+  final expiresAt = DateTime.now().add(Duration(seconds: result.expiresIn!));
+  await storage.write(key: 'expires_at', value: expiresAt.toIso8601String());
+
+  print('💾 Token 已保存到安全存储');
+}
+
+// 获取有效的 Token
+Future<String?> getValidToken() async {
+  final token = await storage.read(key: 'access_token');
+  final expiresAtStr = await storage.read(key: 'expires_at');
+
+  if (token == null) return null;
+
+  // 检查是否过期
+  if (expiresAtStr != null) {
+    final expiresAt = DateTime.parse(expiresAtStr);
+    if (DateTime.now().isAfter(expiresAt)) {
+      // Token 已过期，需要刷新
+      return await _refreshToken();
+    }
+  }
+
+  return token;
+}
+
+// ⚠️ 注意：刷新功能暂时禁用（华为官方 PKCE 接口文档问题）
+// 当前建议：access_token 过期后重新引导用户登录授权
+/*
+// 刷新 Token（待华为官方接口修复后启用）
+Future<String?> _refreshToken() async {
+  final refreshToken = await storage.read(key: 'refresh_token');
+  if (refreshToken == null) return null;
+
+  // 使用 PKCE 模式刷新（自动使用初始的 code_verifier）
+  final result = await oauthHelper.refreshToken(refreshToken);
+
+  if (result.isSuccess) {
+    // 保存新的 access_token
+    await storage.write(key: 'access_token', value: result.accessToken);
+
+    // ⚠️ 关键：检查是否有新的 refresh_token（华为可能返回新的）
+    if (result.refreshToken != null && result.refreshToken != refreshToken) {
+      print('🔄 检测到新的 refresh_token，立即更新！');
+      print('旧 RT: ${refreshToken.substring(0, 30)}...');
+      print('新 RT: ${result.refreshToken!.substring(0, 30)}...');
+
+      // 立即保存新的 refresh_token
+      await storage.write(key: 'refresh_token', value: result.refreshToken);
+    }
+
+    // 更新过期时间
+    final expiresAt = DateTime.now().add(Duration(seconds: result.expiresIn!));
+    await storage.write(key: 'expires_at', value: expiresAt.toIso8601String());
+
+    return result.accessToken;
+  }
+
+  return null;
+}
+*/
+```
+
+### 完整示例代码
+
+查看 [example/lib/pages/huawei_oauth_helper_example.dart](example/lib/pages/huawei_oauth_helper_example.dart) 获取完整的可运行示例，包括：
+
+- 自定义 WebView UI（进度条、Banner 等）
+- 自定义埋点统计
+- 错误处理
+- Token 刷新
+- ID Token 解析
+
+### API 参考
+
+#### HuaweiOAuthHelper 主要方法
+
+| 方法 | 说明 | 返回值 |
+|------|------|--------|
+| `generateAuthUrl()` | 生成授权 URL | `String` |
+| `isCallbackUrl(url)` | 检查是否是回调 URL | `bool` |
+| `parseCallback(url)` | 解析回调 URL，提取授权码 | `Map<String, String>?` |
+| `exchangeToken(code)` | 用授权码换取 Token | `Future<HuaweiOAuthResult>` |
+| ~~`refreshToken(token)`~~ | ~~刷新 Access Token~~ | ⚠️ **暂时禁用** |
+| `parseIdToken(token)` | 解析 ID Token 获取用户信息 | `Map<String, dynamic>?` |
+
+#### HuaweiOAuthResult 字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `accessToken` | `String?` | 访问令牌 |
+| `refreshToken` | `String?` | 刷新令牌 |
+| `idToken` | `String?` | ID Token (JWT 格式) |
+| `expiresIn` | `int?` | 过期时间（秒） |
+| `scope` | `String?` | 授权的权限范围 |
+| `isSuccess` | `bool` | 是否成功 |
+| `error` | `String?` | 错误码 |
+| `errorDescription` | `String?` | 错误描述 |
+
+### 常见问题
+
+<details>
+<summary><b>Q1: 为什么推荐使用 Layer 2 半托管方案？</b></summary>
+
+**A:** Layer 2 方案提供了最佳的灵活性和易用性平衡：
+
+- ✅ **易于集成**：插件处理复杂的 OAuth 逻辑（PKCE、Token 交换等）
+- ✅ **高度灵活**：您可以完全自定义 WebView UI 和业务逻辑
+- ✅ **完全控制**：Token 存储、刷新策略由您决定
+- ✅ **职责清晰**：插件专注于 OAuth 核心功能，不干涉您的业务逻辑
+
+</details>
+
+<details>
+<summary><b>Q2: Token 应该如何存储？</b></summary>
+
+**A:** 推荐使用 `flutter_secure_storage`：
+
+```dart
+// ✅ 推荐：使用安全存储
+final storage = FlutterSecureStorage();
+await storage.write(key: 'access_token', value: token);
+
+// ❌ 不推荐：SharedPreferences 不够安全
+final prefs = await SharedPreferences.getInstance();
+await prefs.setString('access_token', token);  // 不安全！
+```
+
+安全存储的优势：
+- 在 iOS 上使用 Keychain
+- 在 Android 上使用 EncryptedSharedPreferences
+- 数据加密存储，更安全
+</details>
+
+<details>
+<summary><b>Q3: 如何处理 Token 过期？</b></summary>
+
+**A:** ⚠️ **由于华为官方 PKCE 模式刷新接口文档问题，refresh_token 功能暂时禁用。**
+
+**当前建议方案：**
+```dart
+Future<String?> getValidToken() async {
+  final token = await storage.read(key: 'access_token');
+  final expiresAt = await storage.read(key: 'expires_at');
+
+  // 检查是否过期
+  if (expiresAt != null) {
+    final expiry = DateTime.parse(expiresAt);
+    if (DateTime.now().isAfter(expiry)) {
+      // ⚠️ Token 已过期，需要重新授权
+      print('⚠️ Access Token 已过期，请重新登录授权');
+      return null; // 返回 null，触发重新登录流程
+    }
+  }
+
+  return token;
+}
+```
+
+**处理过期的推荐流程：**
+1. 定期检查 `expires_at`（建议提前 5 分钟检查）
+2. 如果即将过期或已过期，引导用户重新授权
+3. 用户完成授权后，保存新的 access_token 和过期时间
+
+**待官方接口修复后的自动刷新方案：**
+<details>
+<summary>点击查看（待启用）</summary>
+
+```dart
+Future<String?> getValidToken() async {
+  final token = await storage.read(key: 'access_token');
+  final expiresAt = await storage.read(key: 'expires_at');
+
+  // 检查是否即将过期（提前 5 分钟）
+  if (expiresAt != null) {
+    final expiry = DateTime.parse(expiresAt);
+    if (DateTime.now().isAfter(expiry.subtract(Duration(minutes: 5)))) {
+      // 自动刷新
+      return await _refreshToken();
+    }
+  }
+
+  return token;
+}
+
+Future<String?> _refreshToken() async {
+  final oldRefreshToken = await storage.read(key: 'refresh_token');
+  if (oldRefreshToken == null) return null;
+
+  // PKCE 模式刷新（自动使用初始的 code_verifier）
+  final result = await oauthHelper.refreshToken(oldRefreshToken);
+
+  if (result.isSuccess) {
+    await storage.write(key: 'access_token', value: result.accessToken);
+
+    // ⚠️ 关键：refresh_token 可能会变化！
+    if (result.refreshToken != null && result.refreshToken != oldRefreshToken) {
+      print('🔄 检测到新的 refresh_token，立即更新！');
+      await storage.write(key: 'refresh_token', value: result.refreshToken);
+    }
+
+    final expiresAt = DateTime.now().add(Duration(seconds: result.expiresIn!));
+    await storage.write(key: 'expires_at', value: expiresAt.toIso8601String());
+
+    return result.accessToken;
+  }
+
+  return null;
+}
+```
+</details>
+</details>
+
+<details>
+<summary><b>Q4: 可以不使用 WebView 吗？</b></summary>
+
+**A:** OAuth 2.0 授权流程需要用户在浏览器中登录华为账号，因此必须使用 WebView 或系统浏览器。
+
+如果您希望使用系统浏览器（更安全），可以：
+1. 使用 `url_launcher` 打开授权 URL
+2. 配置 Deep Link 或 App Link 接收回调
+3. 使用 `parseCallback()` 解析回调 URL
+
+但推荐使用 WebView，因为：
+- 用户体验更好（不离开 App）
+- 更容易控制流程
+- 无需配置复杂的 Deep Link
+</details>
+
+<details>
+<summary><b>Q5: clientId 和 redirectUri 从哪里获取？</b></summary>
+
+**A:** 需要在华为开发者控制台配置：
+
+1. 访问 [华为开发者联盟](https://developer.huawei.com/consumer/cn/)
+2. 创建应用并启用 Health Kit 服务
+3. 在"OAuth 2.0 客户端"中配置：
+   - **Client ID**：系统自动生成
+   - **Redirect URI**：您的回调地址（建议使用 HTTPS）
+
+详见下方的"华为健康 Demo 调试步骤"。
+</details>
+
+### 安全建议
+
+1. ✅ **使用 PKCE 模式**（已默认启用 `S256`，整个流程使用 code_verifier 而非 client_secret）
+2. ✅ **使用安全存储**（`flutter_secure_storage`）
+3. ✅ **验证 state 参数**（防止 CSRF 攻击）
+4. ✅ **使用 HTTPS 回调地址**
+5. ⚠️ **Token 过期处理**：当前建议重新授权（refresh 功能暂时禁用）
+6. ✅ **不要在日志中打印完整 Token**
+7. ✅ **保持 code_verifier 不变**（PKCE 模式在整个授权周期内使用同一个 code_verifier）
+
+### PKCE 模式说明
+
+本插件使用 **PKCE (Proof Key for Code Exchange)** 模式进行 OAuth 2.0 授权，这是专为公共客户端（如移动应用）设计的安全授权方式：
+
+**关键特性：**
+- ✅ 不需要 `client_secret`（更安全）
+- ✅ 使用动态生成的 `code_verifier` 和 `code_challenge`
+- ✅ 整个授权周期（包括刷新 token）都使用同一个 `code_verifier`
+- ✅ 支持 `access_type=offline` 获取 refresh_token
+
+**PKCE 流程：**
+```
+1. 生成 code_verifier (随机 128 字符)
+2. 计算 code_challenge = BASE64URL(SHA256(code_verifier))
+3. 授权请求：带上 code_challenge + code_challenge_method=S256 + access_type=offline
+4. 换取 token：用 code + code_verifier
+5. 刷新 token：用 refresh_token + code_verifier ← ⚠️ 暂时禁用（接口文档问题）
+```
+
+### Token 过期处理（当前方案）
+
+> ⚠️ **重要**：由于华为官方 PKCE 模式刷新接口文档存在问题，refresh_token 功能暂时禁用。
+
+**当前建议方案：**
+- Access Token 有效期：1 小时
+- 过期后：引导用户重新授权
+- 建议：提前 5 分钟检查并提醒用户
+
+**代码示例：**
+```dart
+Future<String?> getValidToken() async {
+  final token = await storage.read(key: 'access_token');
+  final expiresAt = await storage.read(key: 'expires_at');
+
+  if (expiresAt != null) {
+    final expiry = DateTime.parse(expiresAt);
+    if (DateTime.now().isAfter(expiry)) {
+      // Token 已过期，需要重新授权
+      return null;
+    }
+  }
+
+  return token;
+}
+```
+
+### refresh_token 生命周期管理（待启用）
+
+> 📝 **说明**：以下功能待华为官方接口文档修复后启用。
+
+根据华为官方文档，refresh_token 可能会在以下情况变化：
+- 使用 `access_type=offline` 参数刷新时
+- 长时间未使用后刷新时
+- 安全策略触发时
+
+**最佳实践（待启用）：**
+```dart
+// ⚠️ 注意：此功能暂时禁用，待华为官方接口修复后启用
+/*
+// ✅ 推荐：每次刷新都检查 refresh_token 变化
+final result = await oauthHelper.refreshToken(oldRefreshToken);
+
+if (result.isSuccess) {
+  // 保存新 token
+  await storage.write(key: 'access_token', value: result.accessToken);
+
+  // 检查 refresh_token 是否变化
+  if (result.refreshToken != null && result.refreshToken != oldRefreshToken) {
+    // 立即更新保存
+    await storage.write(key: 'refresh_token', value: result.refreshToken);
+    print('✅ refresh_token 已更新');
+  }
+}
+*/
+```
+
+**注意：** PKCE 模式刷新 token 时会自动使用初始授权时生成的 `code_verifier`，您无需手动管理。
+
+---
 
 ## Example App
 
