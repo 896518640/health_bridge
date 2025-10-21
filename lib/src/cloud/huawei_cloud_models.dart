@@ -344,3 +344,102 @@ extension SamplePointBloodPressureExt on SamplePoint {
   }
 }
 
+// ============================================
+// 授权管理相关模型（新增）
+// ============================================
+
+/// 隐私授权状态
+///
+/// 用于表示用户在华为运动健康App中的授权状态
+enum PrivacyAuthStatus {
+  /// 已授权（可以访问健康数据）
+  authorized(1, '已授权'),
+
+  /// 未授权（需要引导用户去华为运动健康App开启授权）
+  notAuthorized(2, '未授权'),
+
+  /// 非华为运动健康App用户（用户没有安装或使用华为运动健康App）
+  notHealthUser(3, '非华为运动健康用户');
+
+  final int value;
+  final String description;
+
+  const PrivacyAuthStatus(this.value, this.description);
+
+  /// 从 API 返回的 opinion 值创建状态
+  factory PrivacyAuthStatus.fromOpinion(int opinion) {
+    return PrivacyAuthStatus.values.firstWhere(
+      (e) => e.value == opinion,
+      orElse: () => PrivacyAuthStatus.notAuthorized,
+    );
+  }
+
+  /// 是否已授权
+  bool get isAuthorized => this == PrivacyAuthStatus.authorized;
+}
+
+/// 用户授权信息
+///
+/// 包含用户授权的所有权限详情
+class UserConsentInfo {
+  /// 权限URL到中文描述的映射
+  ///
+  /// 例如：
+  /// - `https://www.huawei.com/healthkit/sleep.read` -> "查看华为 Health Service Kit 中的睡眠数据"
+  final Map<String, String> scopeDescriptions;
+
+  /// 授权时间
+  final DateTime authTime;
+
+  /// 应用名称
+  final String appName;
+
+  /// 应用图标路径（可选）
+  final String? appIconPath;
+
+  UserConsentInfo({
+    required this.scopeDescriptions,
+    required this.authTime,
+    required this.appName,
+    this.appIconPath,
+  });
+
+  /// 从 API 响应创建对象
+  factory UserConsentInfo.fromJson(Map<String, dynamic> json) {
+    // 解析 url2Desc
+    final url2DescMap = json['url2Desc'] as Map<String, dynamic>? ?? {};
+    final scopeDescriptions = url2DescMap.map(
+      (key, value) => MapEntry(key, value.toString()),
+    );
+
+    // 解析授权时间（Unix时间戳，秒）
+    final authTimeStr = json['authTime'] as String? ?? '0';
+    final authTimeSeconds = int.tryParse(authTimeStr) ?? 0;
+    final authTime = DateTime.fromMillisecondsSinceEpoch(authTimeSeconds * 1000);
+
+    return UserConsentInfo(
+      scopeDescriptions: scopeDescriptions,
+      authTime: authTime,
+      appName: json['appName'] as String? ?? '',
+      appIconPath: json['appIconPath'] as String?,
+    );
+  }
+
+  /// 获取已授权的 scope 列表
+  List<String> get authorizedScopes => scopeDescriptions.keys.toList();
+
+  /// 检查是否授权了特定权限
+  bool hasScope(String scope) => scopeDescriptions.containsKey(scope);
+
+  /// 获取权限数量
+  int get scopeCount => scopeDescriptions.length;
+
+  @override
+  String toString() {
+    return 'UserConsentInfo('
+        'appName: $appName, '
+        'authTime: $authTime, '
+        'scopeCount: $scopeCount'
+        ')';
+  }
+}

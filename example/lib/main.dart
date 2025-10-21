@@ -527,7 +527,7 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       subtitle: const Text(
-                        '华为帐号 OAuth 授权（推荐）\n使用 HuaweiOAuthHelper 半托管模式',
+                        '华为帐号 OAuth 授权（推荐）\n使用 HuaweiOAuthHelper 半托管模式 + 授权管理',
                         style: TextStyle(fontSize: 12),
                       ),
                       trailing: const Icon(Icons.arrow_forward_ios),

@@ -23,6 +23,11 @@ class _HuaweiOAuthTestPageV2State extends State<HuaweiOAuthTestPageV2> {
   Map<String, dynamic>? _userInfo;
   bool _isLoading = false;
 
+  // 授权管理相关状态
+  PrivacyAuthStatus? _privacyStatus;
+  UserConsentInfo? _consentInfo;
+  bool _isCheckingAuth = false;
+
   @override
   void initState() {
     super.initState();
@@ -142,8 +147,145 @@ class _HuaweiOAuthTestPageV2State extends State<HuaweiOAuthTestPageV2> {
     setState(() {
       _oauthResult = null;
       _userInfo = null;
+      _privacyStatus = null;
+      _consentInfo = null;
     });
     _showSuccess('✅ Token 已清除');
+  }
+
+  // ============================================
+  // 授权管理相关方法（新增）
+  // ============================================
+
+  /// 检查隐私授权状态
+  Future<void> _checkPrivacyStatus() async {
+    if (_oauthResult?.accessToken == null) {
+      _showError('⚠️ 请先完成 OAuth 授权');
+      return;
+    }
+
+    setState(() => _isCheckingAuth = true);
+
+    try {
+      final client = HuaweiCloudClient(
+        accessToken: _oauthResult!.accessToken!,
+        clientId: _oauthHelper.config.clientId,
+      );
+
+      final status = await client.checkPrivacyAuthStatus();
+
+      setState(() {
+        _privacyStatus = status;
+        _isCheckingAuth = false;
+      });
+
+      _showSuccess('隐私授权状态: ${status.description}');
+    } catch (e) {
+      setState(() => _isCheckingAuth = false);
+      _showError('查询失败: $e');
+    }
+  }
+
+  /// 查询用户授权权限
+  Future<void> _getUserConsents() async {
+    if (_oauthResult?.accessToken == null) {
+      _showError('⚠️ 请先完成 OAuth 授权');
+      return;
+    }
+
+    setState(() => _isCheckingAuth = true);
+
+    try {
+      final client = HuaweiCloudClient(
+        accessToken: _oauthResult!.accessToken!,
+        clientId: _oauthHelper.config.clientId,
+      );
+
+      final consentInfo = await client.getUserConsents(
+        appId: _oauthHelper.config.clientId,
+        lang: 'zh-cn',
+      );
+
+      setState(() {
+        _consentInfo = consentInfo;
+        _isCheckingAuth = false;
+      });
+
+      _showSuccess('✅ 查询成功！已授权 ${consentInfo.scopeCount} 个权限');
+    } catch (e) {
+      setState(() => _isCheckingAuth = false);
+      _showError('查询失败: $e');
+    }
+  }
+
+  /// 取消授权
+  Future<void> _revokeConsent() async {
+    if (_oauthResult?.accessToken == null) {
+      _showError('⚠️ 请先完成 OAuth 授权');
+      return;
+    }
+
+    // 确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认取消授权'),
+        content: const Text(
+          '取消授权后，将无法访问健康数据。\n'
+          '数据将在3天后自动删除。\n\n'
+          '确定要继续吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isCheckingAuth = true);
+
+    try {
+      final client = HuaweiCloudClient(
+        accessToken: _oauthResult!.accessToken!,
+        clientId: _oauthHelper.config.clientId,
+      );
+
+      final success = await client.revokeConsent(
+        appId: _oauthHelper.config.clientId,
+        deleteDataImmediately: false,
+      );
+
+      setState(() => _isCheckingAuth = false);
+
+      if (success) {
+        _showSuccess('✅ 授权已取消！数据将在3天后删除');
+
+        // 清空所有状态
+        setState(() {
+          _oauthResult = null;
+          _userInfo = null;
+          _privacyStatus = null;
+          _consentInfo = null;
+        });
+      } else {
+        _showError('❌ 取消授权失败');
+      }
+    } catch (e) {
+      setState(() => _isCheckingAuth = false);
+      _showError('操作失败: $e');
+    }
   }
 
   void _showSuccess(String message) {
@@ -338,6 +480,88 @@ class _HuaweiOAuthTestPageV2State extends State<HuaweiOAuthTestPageV2> {
                     ),
 
                     const SizedBox(height: 24),
+
+                    // 授权管理区域（新增）
+                    const Divider(thickness: 2),
+                    const SizedBox(height: 16),
+
+                    Text(
+                      '🔐 授权管理',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '管理用户授权状态和权限',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 授权管理按钮组
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isCheckingAuth ? null : _checkPrivacyStatus,
+                            icon: const Icon(Icons.check_circle, size: 18),
+                            label: const Text('隐私状态', style: TextStyle(fontSize: 13)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isCheckingAuth ? null : _getUserConsents,
+                            icon: const Icon(Icons.list_alt, size: 18),
+                            label: const Text('查询权限', style: TextStyle(fontSize: 13)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isCheckingAuth ? null : _revokeConsent,
+                            icon: const Icon(Icons.block, size: 18),
+                            label: const Text('取消授权', style: TextStyle(fontSize: 13)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // 隐私授权状态显示
+                    if (_privacyStatus != null) ...[
+                      _buildPrivacyStatusCard(),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // 用户授权信息显示
+                    if (_consentInfo != null) ...[
+                      _buildConsentInfoCard(),
+                      const SizedBox(height: 12),
+                    ],
+
+                    const SizedBox(height: 24),
                   ],
 
                   // 用户信息显示
@@ -436,6 +660,188 @@ class _HuaweiOAuthTestPageV2State extends State<HuaweiOAuthTestPageV2> {
                 ],
               ),
             ),
+    );
+  }
+
+  // ============================================
+  // 授权管理 UI 辅助方法
+  // ============================================
+
+  /// 构建隐私授权状态卡片
+  Widget _buildPrivacyStatusCard() {
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+
+    switch (_privacyStatus!) {
+      case PrivacyAuthStatus.authorized:
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = '已授权 - 可以访问健康数据';
+        break;
+      case PrivacyAuthStatus.notAuthorized:
+        statusColor = Colors.orange;
+        statusIcon = Icons.warning;
+        statusText = '未授权 - 需要在华为运动健康App中开启数据共享';
+        break;
+      case PrivacyAuthStatus.notHealthUser:
+        statusColor = Colors.red;
+        statusIcon = Icons.error;
+        statusText = '非华为运动健康用户 - 请安装华为运动健康App';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(statusIcon, color: statusColor, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '隐私授权状态',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建用户授权信息卡片
+  Widget _buildConsentInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info, color: Colors.blue.shade700, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '用户授权信息',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // 基本信息
+          _buildInfoRow('应用名称', _consentInfo!.appName),
+          _buildInfoRow(
+            '授权时间',
+            '${_consentInfo!.authTime.year}-${_consentInfo!.authTime.month.toString().padLeft(2, '0')}-${_consentInfo!.authTime.day.toString().padLeft(2, '0')} '
+                '${_consentInfo!.authTime.hour.toString().padLeft(2, '0')}:${_consentInfo!.authTime.minute.toString().padLeft(2, '0')}',
+          ),
+          _buildInfoRow('权限数量', '${_consentInfo!.scopeCount} 个'),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          // 权限列表
+          Text(
+            '已授权的权限：',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue.shade900,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          ..._consentInfo!.scopeDescriptions.entries.map((entry) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.value,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      entry.key,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade600,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              '$label:',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
