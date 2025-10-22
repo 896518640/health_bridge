@@ -395,6 +395,7 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
     DateTime? startDate,
     DateTime? endDate,
     int? limit,
+    String? queryType,
   }) async {
     try {
       // 条件路由：华为云侧平台走纯Dart实现
@@ -411,12 +412,16 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
         final effectiveStartDate = startDate ?? now.subtract(const Duration(days: 7));
         final effectiveEndDate = endDate ?? now;
 
-        // 默认使用原子查询（detail）
+        // 使用传入的 queryType，默认为 detail
+        // 华为云端：detail = 原子查询，daily = 按天统计
+        final effectiveQueryType = queryType ?? 'detail';
+        final cloudQueryType = effectiveQueryType == 'statistics' ? 'daily' : 'detail';
+        
         return await _cloudClient!.readHealthData(
           dataType: dataType,
           startTime: effectiveStartDate.millisecondsSinceEpoch,
           endTime: effectiveEndDate.millisecondsSinceEpoch,
-          queryType: 'detail',
+          queryType: cloudQueryType,
         );
       }
 
@@ -434,6 +439,9 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
       }
       if (limit != null) {
         arguments['limit'] = limit;
+      }
+      if (queryType != null) {
+        arguments['queryType'] = queryType;
       }
 
       final result = await methodChannel.invokeMethod('readHealthData', arguments);

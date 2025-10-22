@@ -25,6 +25,9 @@ class _DataReadingPageState extends State<DataReadingPage> {
 
   bool _isLoading = false;
   String? _currentLoadingType;
+  
+  // 查询类型：'detail' 详情查询，'statistics' 聚合查询
+  String _queryType = 'detail';
 
   @override
   void initState() {
@@ -88,39 +91,76 @@ class _DataReadingPageState extends State<DataReadingPage> {
       final now = DateTime.now();
       DateTime startDate;
       
-      // 对于身高和体重，使用更长的时间范围（过去1年）
-      // 因为这些数据通常不是每天都记录
-      if (dataType == HealthDataType.height || dataType == HealthDataType.weight) {
+      // 根据查询类型和数据类型确定时间范围
+      if (_queryType == 'statistics') {
+        // 聚合查询：读取最近7天的数据
+        startDate = now.subtract(const Duration(days: 7));
+        startDate = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+      } else if (dataType == HealthDataType.height || dataType == HealthDataType.weight) {
+        // 详情查询 + 身高体重：使用更长的时间范围（过去1年）
+        // 因为这些数据通常不是每天都记录
         startDate = now.subtract(const Duration(days: 365));
       } else {
-        // 其他数据类型读取今天的数据
+        // 详情查询 + 其他数据类型：读取今天的数据
         startDate = DateTime(now.year, now.month, now.day, 0, 0, 0);
       }
 
+      print('📱 [Flutter] 开始读取数据');
+      print('📱 [Flutter] 数据类型: ${dataType.displayName}');
+      print('📱 [Flutter] 查询类型: $_queryType');
+      print('📱 [Flutter] 时间范围: $startDate - $now');
+      
       final result = await HealthBridge.readHealthData(
         platform: widget.platform,
         dataType: dataType,
         startDate: startDate,
         endDate: now,
         limit: 100,
+        queryType: _queryType,
       );
+      
+      print('📱 [Flutter] 查询完成');
+      print('📱 [Flutter] 状态: ${result.status}');
+      print('📱 [Flutter] 数据条数: ${result.data.length}');
 
       if (!mounted) return;
 
       if (result.isSuccess) {
+        print('📱 [Flutter] 数据缓存成功');
+        
         setState(() {
           _healthDataCache[dataType] = result.data;
         });
 
         if (result.data.isEmpty) {
-          // 根据数据类型显示不同的提示
+          print('⚠️ [Flutter] 无数据返回');
+          // 根据数据类型和查询类型显示不同的提示
           if (dataType == HealthDataType.height || dataType == HealthDataType.weight) {
             _showInfo('${dataType.displayName}: 过去一年内暂无数据');
           } else {
-            _showInfo('${dataType.displayName}: 今日暂无数据');
+            final timeRangeText = _queryType == 'statistics' ? '最近7天' : '今日';
+            _showInfo('${dataType.displayName}: ${timeRangeText}暂无数据');
           }
         } else {
-          _showSuccess('${dataType.displayName}: 读取到 ${result.data.length} 条数据');
+          final queryTypeText = _queryType == 'detail' ? '详情' : '聚合';
+          print('✅ [Flutter] 获取到 ${result.data.length} 条${queryTypeText}数据');
+          
+          // 打印前3条数据示例
+          for (var i = 0; i < (result.data.length > 3 ? 3 : result.data.length); i++) {
+            final data = result.data[i];
+            print('   数据 ${i + 1}: 值=${data.value}, 时间=${data.timestamp}, 来源=${data.source}');
+            
+            // 对于血糖数据，打印完整的 metadata
+            if (dataType == HealthDataType.glucose && data.metadata.isNotEmpty) {
+              print('   📋 Metadata详情:');
+              data.metadata.forEach((key, value) {
+                print('      - $key: $value (${value.runtimeType})');
+              });
+            }
+          }
+          
+          _showSuccess('${dataType.displayName}: 读取到 ${result.data.length} 条${queryTypeText}数据');
+          
           // 自动跳转到详情页
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -128,11 +168,13 @@ class _DataReadingPageState extends State<DataReadingPage> {
                 dataType: dataType,
                 dataList: result.data,
                 platform: widget.platform,
+                isGroupedByDay: _queryType == 'statistics', // 聚合查询时按天分组
               ),
             ),
           );
         }
       } else {
+        print('❌ [Flutter] 读取失败: ${result.message}');
         _showError('${dataType.displayName} 读取失败: ${result.message}');
       }
     } catch (e) {
@@ -237,12 +279,74 @@ class _DataReadingPageState extends State<DataReadingPage> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      '• 点击"读取"按钮获取数据（最多100条）\n'
-                      '• 步数/血糖/血压：读取今日数据\n'
-                      '• 身高/体重：读取过去一年数据\n'
-                      '• 读取成功后自动跳转到详情页\n'
-                      '• 如果有缓存数据，点击卡片也可查看详情',
+                      '• 选择查询模式：详情查询或聚合查询\n'
+                      '• 详情查询：返回原始记录，按时间顺序显示\n'
+                      '• 聚合查询：返回原始记录，按天分组显示\n'
+                      '• 聚合模式会显示每天的统计（平均值、最大最小值等）\n'
+                      '• 读取成功后自动跳转到详情页',
                       style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 查询类型选择
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.tune, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          '查询模式',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(
+                          value: 'detail',
+                          label: Text('详情查询'),
+                          icon: Icon(Icons.list),
+                        ),
+                        ButtonSegment(
+                          value: 'statistics',
+                          label: Text('聚合查询'),
+                          icon: Icon(Icons.bar_chart),
+                        ),
+                      ],
+                      selected: {_queryType},
+                      onSelectionChanged: (Set<String> newSelection) {
+                        setState(() {
+                          _queryType = newSelection.first;
+                          // 清除缓存，因为查询类型改变了
+                          _healthDataCache.clear();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _queryType == 'detail'
+                          ? '📝 详情查询：返回所有原始记录，不分组展示'
+                          : '📊 聚合查询：返回所有原始记录，按天分组展示',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ],
                 ),
@@ -270,6 +374,7 @@ class _DataReadingPageState extends State<DataReadingPage> {
                                 dataType: dataType,
                                 dataList: dataList,
                                 platform: widget.platform,
+                                isGroupedByDay: _queryType == 'statistics', // 聚合查询时按天分组
                               ),
                             ),
                           );

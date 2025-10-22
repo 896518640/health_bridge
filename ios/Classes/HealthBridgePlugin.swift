@@ -497,17 +497,19 @@ private extension HealthBridgePlugin {
         let startDateMillis = arguments["startDate"] as? Double
         let endDateMillis = arguments["endDate"] as? Double
         let limit = arguments["limit"] as? Int
+        let queryType = arguments["queryType"] as? String ?? "detail"
 
         let startDate = startDateMillis.map { Date(timeIntervalSince1970: $0 / 1000.0) }
         let endDate = endDateMillis.map { Date(timeIntervalSince1970: $0 / 1000.0) }
 
-        HealthLogger.log("Reading health data for type: \(dataType)")
+        HealthLogger.log("Reading health data for type: \(dataType), queryType: \(queryType)")
 
         appleHealthManager?.readHealthData(
             dataType: dataType,
             startDate: startDate,
             endDate: endDate,
-            limit: limit
+            limit: limit,
+            queryType: queryType
         ) { dataList, error in
             if let error = error {
                 HealthLogger.log("Failed to read health data: \(error)", level: .error)

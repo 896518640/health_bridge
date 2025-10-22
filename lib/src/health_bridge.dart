@@ -370,10 +370,13 @@ class HealthBridge {
   /// [startDate] 开始日期
   /// [endDate] 结束日期
   /// [limit] 数据条数限制（可选）
+  /// [queryType] 查询类型（可选）：
+  ///   - 'detail'（默认）：详情查询，返回所有原始数据记录
+  ///   - 'statistics'：聚合查询，返回按时间段统计的数据
   ///
   /// 使用示例：
   /// ```dart
-  /// // 读取最近7天的步数
+  /// // 读取最近7天的步数详情
   /// final result = await HealthBridge.readHealthData(
   ///   platform: platform,
   ///   dataType: HealthDataType.steps,
@@ -381,11 +384,14 @@ class HealthBridge {
   ///   endDate: DateTime.now(),
   /// );
   ///
-  /// if (result.isSuccess) {
-  ///   for (final data in result.data) {
-  ///     print('${data.value} ${data.unit}');
-  ///   }
-  /// }
+  /// // 读取最近7天的每日步数统计
+  /// final statsResult = await HealthBridge.readHealthData(
+  ///   platform: platform,
+  ///   dataType: HealthDataType.steps,
+  ///   startDate: DateTime.now().subtract(Duration(days: 7)),
+  ///   endDate: DateTime.now(),
+  ///   queryType: 'statistics',
+  /// );
   /// ```
   static Future<HealthDataResult> readHealthData({
     required HealthPlatform platform,
@@ -393,6 +399,7 @@ class HealthBridge {
     DateTime? startDate,
     DateTime? endDate,
     int? limit,
+    String? queryType,
   }) {
     return HealthBridgePlatform.instance.readHealthData(
       platform: platform,
@@ -400,6 +407,7 @@ class HealthBridge {
       startDate: startDate,
       endDate: endDate,
       limit: limit,
+      queryType: queryType,
     );
   }
 

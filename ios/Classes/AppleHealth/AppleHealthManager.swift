@@ -3,7 +3,9 @@ import HealthKit
 
 // MARK: - Health Data Units
 private struct HealthUnits {
-    static let bloodGlucose = HKUnit.gramUnit(with: .milli).unitDivided(by: HKUnit.literUnit(with: .deci))
+    // 血糖单位：mmol/L（毫摩尔/升）- 中国标准
+    // 如果需要使用 mg/dL，可以改为：HKUnit.gramUnit(with: .milli).unitDivided(by: HKUnit.literUnit(with: .deci))
+    static let bloodGlucose = HKUnit.moleUnit(with: .milli, molarMass: HKUnitMolarMassBloodGlucose).unitDivided(by: .liter())
     static let kilogram = HKUnit.gramUnit(with: .kilo)
     static let beatsPerMinute = HKUnit.count().unitDivided(by: .minute())
     static let mmHg = HKUnit.millimeterOfMercury()
@@ -749,6 +751,7 @@ class AppleHealthManager {
         startDate: Date?,
         endDate: Date?,
         limit: Int?,
+        queryType: String = "detail",
         completion: @escaping ([[String: Any]], String?) -> Void
     ) {
         guard isHealthKitAvailable else {
@@ -778,9 +781,18 @@ class AppleHealthManager {
             readSleepData(sleepType: dataType, from: start, to: end, limit: queryLimit, completion: completion)
             return
         }
+        
+        // 注意：statistics 查询类型现在也返回原始数据，只是在 Flutter 端会按天分组展示
+        // 不使用 HKStatisticsCollectionQuery，而是返回所有原始记录
 
-        // Handle quantity types
+        // Handle quantity types - 详情查询（获取所有原始记录）
+        print("📝 [Detail] 开始详情查询")
+        print("📝 [Detail] 数据类型: \(dataType)")
+        print("📝 [Detail] 时间范围: \(start) - \(end)")
+        print("📝 [Detail] 查询限制: \(queryLimit) 条")
+        
         guard let quantityType = getQuantityType(for: dataType) else {
+            print("❌ [Detail] 不支持的数据类型: \(dataType)")
             completion([], "Unsupported data type: \(dataType)")
             return
         }
@@ -796,21 +808,245 @@ class AppleHealthManager {
         ) { _, samples, error in
             DispatchQueue.main.async {
                 if let error = error {
+                    print("❌ [Detail] 查询失败: \(error.localizedDescription)")
                     completion([], error.localizedDescription)
                     return
                 }
 
+                print("✅ [Detail] 查询成功，原始样本数: \((samples as? [HKQuantitySample])?.count ?? 0)")
+                
                 let data = (samples as? [HKQuantitySample])?.map { sample in
                     self.createDataDictionary(from: sample, dataType: dataType)
                 } ?? []
 
+                print("✅ [Detail] 返回数据条数: \(data.count)")
+                if data.count > 0 {
+                    print("📋 [Detail] 示例数据: \(data.first ?? [:])")
+                }
+                
                 completion(data, nil)
             }
         }
 
+        print("📝 [Detail] 执行查询...")
         executeQuery(query)
     }
 
+    /// 读取健康数据统计（按天聚合）
+    private func readHealthDataStatistics(
+        dataType: String,
+        from startDate: Date,
+        to endDate: Date,
+        completion: @escaping ([[String: Any]], String?) -> Void
+    ) {
+        print("📊 [Statistics] 开始聚合查询")
+        print("📊 [Statistics] 数据类型: \(dataType)")
+        print("📊 [Statistics] 时间范围: \(startDate) - \(endDate)")
+        
+        guard let quantityType = getQuantityType(for: dataType) else {
+            print("❌ [Statistics] 不支持的数据类型: \(dataType)")
+            completion([], "Unsupported data type: \(dataType)")
+            return
+        }
+        
+        let statisticsOptions = getStatisticsOptions(for: dataType)
+        print("📊 [Statistics] 统计选项: \(statisticsOptions)")
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        let interval = DateComponents(day: 1)  // 按天统计
+        
+        let query = HKStatisticsCollectionQuery(
+            quantityType: quantityType,
+            quantitySamplePredicate: predicate,
+            options: statisticsOptions,
+            anchorDate: Calendar.current.startOfDay(for: startDate),
+            intervalComponents: interval
+        )
+        
+        query.initialResultsHandler = { [weak self] _, collection, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ [Statistics] 查询失败: \(error.localizedDescription)")
+                    completion([], error.localizedDescription)
+                    return
+                }
+                
+                guard let collection = collection else {
+                    print("⚠️ [Statistics] 查询结果为空")
+                    completion([], nil)
+                    return
+                }
+                
+                print("✅ [Statistics] 开始枚举统计数据...")
+                var statisticsData: [[String: Any]] = []
+                var dayCount = 0
+                
+                collection.enumerateStatistics(from: startDate, to: endDate) { statistics, _ in
+                    dayCount += 1
+                    print("📅 [Statistics] 第 \(dayCount) 天: \(statistics.startDate)")
+                    
+                    // 打印统计详情（血糖数据）
+                    if dataType == "glucose" {
+                        print("   🔍 [Statistics] 统计详情:")
+                        if let sum = statistics.sumQuantity() {
+                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
+                            print("      ├─ 累加和: \(sum.doubleValue(for: unit))")
+                        }
+                        if let average = statistics.averageQuantity() {
+                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
+                            print("      ├─ 平均值: \(average.doubleValue(for: unit))")
+                        }
+                        if let min = statistics.minimumQuantity() {
+                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
+                            print("      ├─ 最小值: \(min.doubleValue(for: unit))")
+                        }
+                        if let max = statistics.maximumQuantity() {
+                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
+                            print("      ├─ 最大值: \(max.doubleValue(for: unit))")
+                        }
+                        if let mostRecent = statistics.mostRecentQuantity() {
+                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
+                            print("      ├─ 最近值: \(mostRecent.doubleValue(for: unit))")
+                        }
+                        print("      └─ 样本数: \(statistics.sources?.count ?? 0)")
+                    }
+                    
+                    if let data = self?.createStatisticsDataDictionary(from: statistics, dataType: dataType) {
+                        print("   ✓ 返回数据值: \(data["value"] ?? "nil")")
+                        statisticsData.append(data)
+                    } else {
+                        print("   ✗ 该天无数据")
+                    }
+                }
+                
+                print("✅ [Statistics] 查询完成，共 \(statisticsData.count) 条记录")
+                completion(statisticsData, nil)
+            }
+        }
+        
+        print("📊 [Statistics] 执行查询...")
+        executeQuery(query)
+    }
+    
+    /// 获取统计查询选项
+    private func getStatisticsOptions(for dataTypeKey: String) -> HKStatisticsOptions {
+        // 根据数据类型选择合适的统计选项
+        switch dataTypeKey {
+        // 累计型数据：步数、距离、卡路里等
+        case "steps", "distance", "active_calories", "water":
+            return .cumulativeSum
+            
+        // 离散型数据（取平均值）：血糖、心率、血压、体温等
+        case "glucose", "heart_rate", "body_temperature", "oxygen_saturation",
+             "blood_pressure_systolic", "blood_pressure_diastolic":
+            return .discreteAverage
+            
+        // 身体测量数据（最近一次测量值）：体重、身高、体脂等
+        case "weight", "height", "body_fat", "bmi":
+            return .discreteAverage
+            
+        // 默认使用累加和
+        default:
+            return .cumulativeSum
+        }
+    }
+    
+    /// 创建统计数据字典
+    private func createStatisticsDataDictionary(from statistics: HKStatistics, dataType: String) -> [String: Any]? {
+        let unit = getUnit(for: dataType)
+        let timestamp = Int64(statistics.startDate.timeIntervalSince1970 * 1000)
+        let options = getStatisticsOptions(for: dataType)
+        
+        print("   📝 [Statistics] 处理数据 - 时间: \(statistics.startDate)")
+        print("   📝 [Statistics] 统计选项: \(options)")
+        
+        // 根据统计选项获取相应的值
+        if options.contains(.cumulativeSum) {
+            if let sum = statistics.sumQuantity() {
+                // 累加和：用于步数、距离、卡路里等
+                var value = sum.doubleValue(for: unit)
+                print("   ✓ [Statistics] 累加和: \(value)")
+                
+                // Convert height from meters to centimeters if needed
+                if dataType == "height" {
+                    value = value * 100
+                }
+                
+                return [
+                    "type": dataType,
+                    "value": value,
+                    "timestamp": timestamp,
+                    "unit": getUnitString(for: dataType),
+                    "platform": "apple_health",
+                    "source": "Statistics",
+                    "metadata": [
+                        "queryType": "statistics",
+                        "interval": "daily",
+                        "aggregation": "sum"
+                    ]
+                ]
+            } else {
+                print("   ✗ [Statistics] 无累加和数据")
+            }
+        }
+        
+        if options.contains(.discreteAverage) {
+            if let average = statistics.averageQuantity() {
+                // 平均值：用于血糖、心率、体重等
+                var value = average.doubleValue(for: unit)
+                print("   ✓ [Statistics] 平均值: \(value)")
+                
+                // Convert height from meters to centimeters if needed
+                if dataType == "height" {
+                    value = value * 100
+                }
+                
+                return [
+                    "type": dataType,
+                    "value": value,
+                    "timestamp": timestamp,
+                    "unit": getUnitString(for: dataType),
+                    "platform": "apple_health",
+                    "source": "Statistics",
+                    "metadata": [
+                        "queryType": "statistics",
+                        "interval": "daily",
+                        "aggregation": "average"
+                    ]
+                ]
+            } else {
+                print("   ✗ [Statistics] 无平均值数据")
+            }
+        }
+        
+        // 尝试获取最小值和最大值（备选）
+        if let minimum = statistics.minimumQuantity() {
+            var value = minimum.doubleValue(for: unit)
+            print("   ✓ [Statistics] 最小值: \(value)")
+            
+            if dataType == "height" {
+                value = value * 100
+            }
+            
+            return [
+                "type": dataType,
+                "value": value,
+                "timestamp": timestamp,
+                "unit": getUnitString(for: dataType),
+                "platform": "apple_health",
+                "source": "Statistics",
+                "metadata": [
+                    "queryType": "statistics",
+                    "interval": "daily",
+                    "aggregation": "minimum"
+                ]
+            ]
+        }
+        
+        print("   ⚠️ [Statistics] 该时间段无任何统计数据")
+        return nil
+    }
+    
     /// 读取 Workout 数据
     private func readWorkoutData(
         from startDate: Date,
@@ -1141,6 +1377,56 @@ class AppleHealthManager {
         if dataType == "height" {
             value = value * 100  // m to cm
         }
+        
+        // 打印完整的 HKSample 信息（用于调试血糖等数据）
+        if dataType == "glucose" {
+            print("🔍 [Metadata] ========== 血糖数据详细信息 ==========")
+            print("🔍 [Metadata] 📊 数据值: \(value) \(getUnitString(for: dataType))")
+            print("🔍 [Metadata] ⏰ 开始时间: \(sample.startDate)")
+            print("🔍 [Metadata] ⏰ 结束时间: \(sample.endDate)")
+            print("🔍 [Metadata] 📱 数据源名称: \(sample.sourceRevision.source.name)")
+            print("🔍 [Metadata] 📦 数据源Bundle: \(sample.sourceRevision.source.bundleIdentifier)")
+            print("🔍 [Metadata] 🔖 数据源版本: \(sample.sourceRevision.version ?? "无版本信息")")
+            print("🔍 [Metadata] 🆔 数据UUID: \(sample.uuid.uuidString)")
+            
+            print("🔍 [Metadata] 📲 设备信息:")
+            if let device = sample.device {
+                print("   ├─ 名称: \(device.name ?? "未知")")
+                print("   ├─ 制造商: \(device.manufacturer ?? "未知")")
+                print("   ├─ 型号: \(device.model ?? "未知")")
+                print("   ├─ 硬件版本: \(device.hardwareVersion ?? "未知")")
+                print("   └─ 软件版本: \(device.softwareVersion ?? "未知")")
+            } else {
+                print("   └─ 无设备信息")
+            }
+            
+            print("🔍 [Metadata] 📋 原始Metadata字段:")
+            if let sampleMetadata = sample.metadata {
+                if sampleMetadata.isEmpty {
+                    print("   └─ Metadata为空")
+                } else {
+                    for (index, (key, value)) in sampleMetadata.enumerated() {
+                        let prefix = index == sampleMetadata.count - 1 ? "└─" : "├─"
+                        print("   \(prefix) \(key): \(value)")
+                        print("      类型: \(type(of: value))")
+                    }
+                }
+            } else {
+                print("   └─ 无Metadata")
+            }
+            print("🔍 [Metadata] =======================================")
+        }
+        
+        // 收集 metadata
+        var metadata: [String: Any] = [:]
+        if let sampleMetadata = sample.metadata {
+            metadata = sampleMetadata.mapValues { value -> Any in
+                if let date = value as? Date {
+                    return Int64(date.timeIntervalSince1970 * 1000)
+                }
+                return value
+            }
+        }
 
         return [
             "type": dataType,
@@ -1148,7 +1434,8 @@ class AppleHealthManager {
             "timestamp": timestamp,
             "unit": getUnitString(for: dataType),
             "platform": "apple_health",
-            "source": sample.sourceRevision.source.name
+            "source": sample.sourceRevision.source.name,
+            "metadata": metadata
         ]
     }
 

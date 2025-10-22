@@ -192,12 +192,14 @@ abstract class HealthBridgePlatform extends PlatformInterface {
   /// [startDate] 开始日期
   /// [endDate] 结束日期
   /// [limit] 数据条数限制（可选）
+  /// [queryType] 查询类型：'detail' 详情查询（默认），'statistics' 聚合查询
   Future<HealthDataResult> readHealthData({
     required HealthPlatform platform,
     required HealthDataType dataType,
     DateTime? startDate,
     DateTime? endDate,
     int? limit,
+    String? queryType,
   }) {
     throw UnimplementedError('readHealthData() has not been implemented.');
   }
