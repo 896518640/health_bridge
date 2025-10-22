@@ -190,7 +190,7 @@ class AppleHealthManager {
             quantityType: HealthDataTypes.stepCountType,
             quantitySamplePredicate: predicate,
             options: .cumulativeSum
-        ) { [weak self] _, statistics, error in
+        ) { _, statistics, error in
             DispatchQueue.main.async {
                 if let error = error {
                     print("Error reading step count: \(error.localizedDescription)")
@@ -430,6 +430,126 @@ class AppleHealthManager {
         }
     }
     
+    /// 读取血压数据（复合数据，包含收缩压和舒张压）
+    func readBloodPressure(from startDate: Date, to endDate: Date, completion: @escaping ([[String: Any]], String?) -> Void) {
+        guard isHealthKitAvailable else {
+            completion([], "HealthKit is not available")
+            return
+        }
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        
+        // 首先读取收缩压数据
+        let systolicQuery = HKSampleQuery(
+            sampleType: HealthDataTypes.systolicBloodPressureType,
+            predicate: predicate,
+            limit: HealthManagerConfig.defaultQueryLimit,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] _, systolicSamples, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    completion([], error.localizedDescription)
+                }
+                return
+            }
+            
+            // 然后读取舒张压数据
+            let diastolicQuery = HKSampleQuery(
+                sampleType: HealthDataTypes.diastolicBloodPressureType,
+                predicate: predicate,
+                limit: HealthManagerConfig.defaultQueryLimit,
+                sortDescriptors: [sortDescriptor]
+            ) { _, diastolicSamples, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        completion([], error.localizedDescription)
+                        return
+                    }
+                    
+                    // 合并收缩压和舒张压数据
+                    let bloodPressureData = self?.combineBloodPressureData(
+                        systolicSamples: systolicSamples as? [HKQuantitySample] ?? [],
+                        diastolicSamples: diastolicSamples as? [HKQuantitySample] ?? []
+                    ) ?? []
+                    
+                    completion(bloodPressureData, nil)
+                }
+            }
+            
+            self?.executeQuery(diastolicQuery)
+        }
+        
+        executeQuery(systolicQuery)
+    }
+    
+    /// 合并收缩压和舒张压数据
+    private func combineBloodPressureData(
+        systolicSamples: [HKQuantitySample],
+        diastolicSamples: [HKQuantitySample]
+    ) -> [[String: Any]] {
+        var bloodPressureMap: [Date: [String: Any]] = [:]
+        
+        // 处理收缩压数据
+        for sample in systolicSamples {
+            let timestamp = sample.startDate
+            let systolicValue = sample.quantity.doubleValue(for: HealthUnits.mmHg)
+            let source = sample.sourceRevision.source.name
+            
+            if bloodPressureMap[timestamp] == nil {
+                bloodPressureMap[timestamp] = [
+                    "timestamp": Int64(timestamp.timeIntervalSince1970 * 1000),
+                    "source": source
+                ]
+            }
+            bloodPressureMap[timestamp]?["systolic"] = systolicValue
+        }
+        
+        // 处理舒张压数据
+        for sample in diastolicSamples {
+            let timestamp = sample.startDate
+            let diastolicValue = sample.quantity.doubleValue(for: HealthUnits.mmHg)
+            let source = sample.sourceRevision.source.name
+            
+            if bloodPressureMap[timestamp] == nil {
+                bloodPressureMap[timestamp] = [
+                    "timestamp": Int64(timestamp.timeIntervalSince1970 * 1000),
+                    "source": source
+                ]
+            }
+            bloodPressureMap[timestamp]?["diastolic"] = diastolicValue
+        }
+        
+        // 只保留同时有收缩压和舒张压的数据
+        let results = bloodPressureMap.compactMap { (date, data) -> [String: Any]? in
+            guard let systolic = data["systolic"] as? Double,
+                  let diastolic = data["diastolic"] as? Double,
+                  let timestamp = data["timestamp"] as? Int64 else {
+                return nil
+            }
+            
+            return [
+                "type": "blood_pressure",
+                "value": NSNull(),  // 血压是复合类型，value为null
+                "timestamp": timestamp,
+                "unit": "mmHg",
+                "platform": "apple_health",
+                "source": data["source"] ?? "Unknown",
+                "metadata": [
+                    "systolic": systolic,
+                    "diastolic": diastolic
+                ]
+            ]
+        }
+        
+        // 按时间排序
+        return results.sorted { sample1, sample2 in
+            let timestamp1 = sample1["timestamp"] as? Int64 ?? 0
+            let timestamp2 = sample2["timestamp"] as? Int64 ?? 0
+            return timestamp1 < timestamp2
+        }
+    }
+    
     // MARK: - Query Management
     private func executeQuery(_ query: HKQuery) {
         activeQueries.insert(query)
@@ -464,8 +584,13 @@ class AppleHealthManager {
         for dataTypeKey in dataTypes {
             var objectType: HKObjectType? = nil
 
+            // Handle blood pressure (composite type)
+            if dataTypeKey == "blood_pressure" {
+                // 对于血压，检查收缩压的权限即可（两者一起授权）
+                objectType = HealthDataTypes.systolicBloodPressureType
+            }
             // Handle workout type
-            if dataTypeKey == "workout" {
+            else if dataTypeKey == "workout" {
                 objectType = HKWorkoutType.workoutType()
             }
             // Handle sleep types
@@ -508,6 +633,19 @@ class AppleHealthManager {
         let needsWrite = operations.contains("write")
 
         for dataTypeKey in dataTypes {
+            // Handle blood pressure separately (composite type - need both systolic and diastolic)
+            if dataTypeKey == "blood_pressure" {
+                if needsRead {
+                    readTypes.insert(HealthDataTypes.systolicBloodPressureType)
+                    readTypes.insert(HealthDataTypes.diastolicBloodPressureType)
+                }
+                if needsWrite {
+                    writeTypes.insert(HealthDataTypes.systolicBloodPressureType)
+                    writeTypes.insert(HealthDataTypes.diastolicBloodPressureType)
+                }
+                continue
+            }
+            
             // Handle workout type separately (HKWorkoutType instead of HKQuantityType)
             if dataTypeKey == "workout" {
                 if needsRead {
@@ -578,7 +716,7 @@ class AppleHealthManager {
         return [
             "steps", "distance", "active_calories",
             "glucose",
-            "heart_rate", "blood_pressure_systolic", "blood_pressure_diastolic",
+            "heart_rate", "blood_pressure", "blood_pressure_systolic", "blood_pressure_diastolic",
             "weight", "height", "body_fat", "bmi",
             "sleep_duration", "sleep_deep", "sleep_light", "sleep_rem",
             "water",
@@ -622,6 +760,12 @@ class AppleHealthManager {
         let start = startDate ?? Calendar.current.startOfDay(for: now)
         let end = endDate ?? now
         let queryLimit = limit ?? HealthManagerConfig.defaultQueryLimit
+
+        // Handle blood pressure separately (composite data type)
+        if dataType == "blood_pressure" {
+            readBloodPressure(from: start, to: end, completion: completion)
+            return
+        }
 
         // Handle workout type separately
         if dataType == "workout" {
@@ -941,7 +1085,7 @@ class AppleHealthManager {
         case "weight":
             return HealthUnits.kilogram
         case "height":
-            return .meter()
+            return .meter()  // HealthKit uses meters internally
         case "body_fat", "bmi", "oxygen_saturation":
             return .percent()
         case "body_temperature":
@@ -972,7 +1116,7 @@ class AppleHealthManager {
         case "weight":
             return "kg"
         case "height":
-            return "m"
+            return "cm"  // Convert to cm for display
         case "body_fat", "bmi":
             return "%"
         case "oxygen_saturation":
@@ -990,8 +1134,13 @@ class AppleHealthManager {
 
     private func createDataDictionary(from sample: HKQuantitySample, dataType: String) -> [String: Any] {
         let unit = getUnit(for: dataType)
-        let value = sample.quantity.doubleValue(for: unit)
+        var value = sample.quantity.doubleValue(for: unit)
         let timestamp = Int64(sample.startDate.timeIntervalSince1970 * 1000)
+
+        // Convert height from meters to centimeters
+        if dataType == "height" {
+            value = value * 100  // m to cm
+        }
 
         return [
             "type": dataType,

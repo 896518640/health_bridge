@@ -32,12 +32,25 @@ class _DataReadingPageState extends State<DataReadingPage> {
     _checkPermissions();
   }
 
+  /// 获取当前平台的测试数据类型列表
+  List<HealthDataType> _getTestDataTypes() {
+    switch (widget.platform) {
+      case HealthPlatform.appleHealth:
+        return appleHealthTestTypes;
+      case HealthPlatform.huaweiHealth:
+      case HealthPlatform.huaweiCloud:
+        return huaweiTestTypes;
+      default:
+        return huaweiTestTypes;
+    }
+  }
+
   /// 检查权限状态
   Future<void> _checkPermissions() async {
     try {
       final permissions = await HealthBridge.checkPermissions(
         platform: widget.platform,
-        dataTypes: huaweiTestTypes,
+        dataTypes: _getTestDataTypes(),
         operation: HealthDataOperation.read,
       );
 
@@ -71,14 +84,23 @@ class _DataReadingPageState extends State<DataReadingPage> {
         return;
       }
 
-      // 读取今天的数据
+      // 确定时间范围
       final now = DateTime.now();
-      final todayStart = DateTime(now.year, now.month, now.day, 0, 0, 0);
+      DateTime startDate;
+      
+      // 对于身高和体重，使用更长的时间范围（过去1年）
+      // 因为这些数据通常不是每天都记录
+      if (dataType == HealthDataType.height || dataType == HealthDataType.weight) {
+        startDate = now.subtract(const Duration(days: 365));
+      } else {
+        // 其他数据类型读取今天的数据
+        startDate = DateTime(now.year, now.month, now.day, 0, 0, 0);
+      }
 
       final result = await HealthBridge.readHealthData(
         platform: widget.platform,
         dataType: dataType,
-        startDate: todayStart,
+        startDate: startDate,
         endDate: now,
         limit: 100,
       );
@@ -91,7 +113,12 @@ class _DataReadingPageState extends State<DataReadingPage> {
         });
 
         if (result.data.isEmpty) {
-          _showInfo('${dataType.displayName}: 今日暂无数据');
+          // 根据数据类型显示不同的提示
+          if (dataType == HealthDataType.height || dataType == HealthDataType.weight) {
+            _showInfo('${dataType.displayName}: 过去一年内暂无数据');
+          } else {
+            _showInfo('${dataType.displayName}: 今日暂无数据');
+          }
         } else {
           _showSuccess('${dataType.displayName}: 读取到 ${result.data.length} 条数据');
           // 自动跳转到详情页
@@ -210,7 +237,9 @@ class _DataReadingPageState extends State<DataReadingPage> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      '• 点击"读取"按钮获取今日数据（最多100条）\n'
+                      '• 点击"读取"按钮获取数据（最多100条）\n'
+                      '• 步数/血糖/血压：读取今日数据\n'
+                      '• 身高/体重：读取过去一年数据\n'
                       '• 读取成功后自动跳转到详情页\n'
                       '• 如果有缓存数据，点击卡片也可查看详情',
                       style: TextStyle(fontSize: 12),
@@ -222,7 +251,7 @@ class _DataReadingPageState extends State<DataReadingPage> {
             const SizedBox(height: 16),
 
             // 数据类型列表
-            ...huaweiTestTypes.map((dataType) {
+            ..._getTestDataTypes().map((dataType) {
               final dataList = _healthDataCache[dataType];
               final hasData = dataList != null && dataList.isNotEmpty;
               final permission = _readPermissions[dataType];
@@ -376,6 +405,10 @@ class _DataReadingPageState extends State<DataReadingPage> {
         return Icons.water_drop;
       case HealthDataType.bloodPressure:
         return Icons.favorite;
+      case HealthDataType.height:
+        return Icons.height;
+      case HealthDataType.weight:
+        return Icons.monitor_weight;
       default:
         return Icons.health_and_safety;
     }

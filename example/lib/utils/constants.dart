@@ -40,3 +40,12 @@ final List<HealthDataType> huaweiTestTypes = [
   HealthDataType.glucose,
   HealthDataType.bloodPressure,
 ];
+
+/// Apple Health 测试数据类型（步数、血糖、血压、身高、体重）
+final List<HealthDataType> appleHealthTestTypes = [
+  HealthDataType.steps,
+  HealthDataType.glucose,
+  HealthDataType.bloodPressure,
+  HealthDataType.height,
+  HealthDataType.weight,
+];
