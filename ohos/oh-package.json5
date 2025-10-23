@@ -5,5 +5,7 @@
   "main": "index.ets",
   "author": "",
   "license": "Apache-2.0",
-  "dependencies": {}
+  "dependencies": {
+    "@ohos/flutter_ohos": "file:../../../fvm/versions/custom_ohos_3.22.0/bin/cache/artifacts/engine/ohos-arm64/flutter.har"
+  }
 }

@@ -1,25 +1,10 @@
 
 {
   "app": {
-    "signingConfigs": [
-      {
-        "name": "default",
-        "type": "HarmonyOS",
-        "material": {
-          "storeFile": "./sign/store_file.p12",
-          "storePassword": "00000020F08CEA9BD21C48B7F1F3526EA3E50204D0B27A8073C16A543A609B31470683000E0BD0E5956470769FD74396",
-          "keyAlias": "novocare",
-          "keyPassword": "00000020B57EDCC23D2F39F0953E017DCA1102354E460F7F8D93A94AFDBBFFE8D6C3757A632234DBF4B959189A42BA91",
-          "signAlg": "SHA256withECDSA",
-          "profile": "./sign/debug/novocare-debugDebug.p7b",
-          "certpath": "./sign/debug/novocare-debug.cer"
-        }
-      }
-    ],
+    "signingConfigs": [],
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
         "compatibleSdkVersion": "5.0.4(16)",
         "runtimeOS": "HarmonyOS",
       }

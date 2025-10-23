@@ -1,6 +1,5 @@
 import webview from '@ohos.web.webview';
 import router from '@ohos.router';
-import HealthBridgePlugin from 'health_bridge';
 
 /**
  * 华为 OAuth WebView 页面
@@ -91,13 +90,9 @@ struct HuaweiOAuthWebViewPage {
       result['error_description'] = errorDescription;
     }
 
-    // 通过 plugin 发送结果给 Flutter
-    const plugin = HealthBridgePlugin.getInstance();
-    if (plugin) {
-      plugin.sendOAuthResult(result);
-    } else {
-      console.error('[HuaweiOAuth] 无法获取 plugin 实例');
-    }
+    // 注意：当前华为运动健康使用云端API，不通过原生代码交互
+    // OAuth 结果应该通过 Flutter 的 WebView 回调处理
+    console.info('[HuaweiOAuth] OAuth 结果: ' + JSON.stringify(result));
 
     // 关闭当前页面
     router.back();
