@@ -45,7 +45,7 @@
     },
     {
       "name": "flutter",
-      "rootUri": "file:///Users/tang/fvm/versions/custom_ohos_3.22.0/packages/flutter",
+      "rootUri": "file:///Users/tang/fvm/versions/3.22.1/packages/flutter",
       "packageUri": "lib/",
       "languageVersion": "3.3"
     },
@@ -57,7 +57,7 @@
     },
     {
       "name": "flutter_test",
-      "rootUri": "file:///Users/tang/fvm/versions/custom_ohos_3.22.0/packages/flutter_test",
+      "rootUri": "file:///Users/tang/fvm/versions/3.22.1/packages/flutter_test",
       "packageUri": "lib/",
       "languageVersion": "3.3"
     },
@@ -129,7 +129,7 @@
     },
     {
       "name": "sky_engine",
-      "rootUri": "file:///Users/tang/fvm/versions/custom_ohos_3.22.0/bin/cache/pkg/sky_engine",
+      "rootUri": "file:///Users/tang/fvm/versions/3.22.1/bin/cache/pkg/sky_engine",
       "packageUri": "lib/",
       "languageVersion": "3.2"
     },
@@ -200,10 +200,10 @@
       "languageVersion": "3.4"
     }
   ],
-  "generated": "2025-10-20T05:46:15.416828Z",
+  "generated": "2025-10-24T07:08:02.221329Z",
   "generator": "pub",
-  "generatorVersion": "3.4.0",
-  "flutterRoot": "file:///Users/tang/fvm/versions/custom_ohos_3.22.0",
-  "flutterVersion": "3.22.1-ohos-1.0.3",
+  "generatorVersion": "3.4.1",
+  "flutterRoot": "file:///Users/tang/fvm/versions/3.22.1",
+  "flutterVersion": "3.22.1",
   "pubCache": "file:///Users/tang/.pub-cache"
 }

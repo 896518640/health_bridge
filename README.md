@@ -606,6 +606,248 @@ if (result.isSuccess) {
 
 ---
 
+## 授权管理 API（新增）
+
+在完成 OAuth 授权后，您可以使用以下三个云侧 API 来管理用户的授权状态和权限。
+
+### API 概览
+
+| API | 功能 | 使用场景 |
+|-----|------|----------|
+| **checkPrivacyAuthStatus()** | 查询隐私授权状态 | 检查用户是否在华为运动健康App中开启了数据共享 |
+| **getUserConsents()** | 查询用户授权权限 | 查看用户具体授权了哪些健康数据权限 |
+| **revokeConsent()** | 取消授权 | 撤销所有健康数据访问权限 |
+
+### 1️⃣ 查询隐私授权状态
+
+检查用户是否在华为运动健康App中开启了数据共享授权。
+
+```dart
+import 'package:health_bridge/health_bridge.dart';
+
+// 创建云侧API客户端
+final client = HuaweiCloudClient(
+  accessToken: yourAccessToken,  // 从 OAuth 流程获取
+  clientId: 'your_client_id',
+);
+
+// 查询隐私授权状态
+final status = await client.checkPrivacyAuthStatus();
+
+if (status.isAuthorized) {
+  // 已授权，可以访问健康数据
+  print('✅ 用户已授权');
+} else if (status == PrivacyAuthStatus.notAuthorized) {
+  // 需要引导用户去华为运动健康App开启授权
+  print('⚠️ 用户未授权，请引导用户开启数据共享');
+  // TODO: 显示引导对话框
+} else {
+  // 用户没有安装华为运动健康App
+  print('❌ 用户未安装华为运动健康App');
+}
+```
+
+**返回值：**
+- `PrivacyAuthStatus.authorized` (1)：已授权
+- `PrivacyAuthStatus.notAuthorized` (2)：未授权
+- `PrivacyAuthStatus.notHealthUser` (3)：非华为运动健康App用户
+
+### 2️⃣ 查询用户授权权限
+
+获取用户授权给应用的所有健康数据权限详情。
+
+```dart
+// 查询用户授权的权限列表
+final consentInfo = await client.getUserConsents(
+  appId: 'your_client_id',  // 通常与 clientId 相同
+  lang: 'zh-cn',  // 'zh-cn' 或 'en-US'
+);
+
+print('应用名称: ${consentInfo.appName}');
+print('授权时间: ${consentInfo.authTime}');
+print('权限数量: ${consentInfo.scopeCount}');
+
+// 查看已授权的所有权限
+print('已授权的权限:');
+consentInfo.scopeDescriptions.forEach((scope, description) {
+  print('  $scope');
+  print('    → $description');
+});
+
+// 检查是否授权了特定权限
+if (consentInfo.hasScope('https://www.huawei.com/healthkit/sleep.read')) {
+  print('✅ 有睡眠数据读取权限');
+}
+```
+
+**返回数据：**
+```dart
+class UserConsentInfo {
+  Map<String, String> scopeDescriptions; // 权限URL到描述的映射
+  DateTime authTime;                     // 授权时间
+  String appName;                        // 应用名称
+  String? appIconPath;                   // 应用图标（可选）
+
+  List<String> get authorizedScopes;     // 已授权的scope列表
+  bool hasScope(String scope);           // 检查是否有某个权限
+  int get scopeCount;                    // 权限数量
+}
+```
+
+### 3️⃣ 取消授权
+
+撤销用户对该应用的全部健康数据访问权限。
+
+```dart
+// 取消授权（保留数据3天）
+final success = await client.revokeConsent(
+  appId: 'your_client_id',
+  deleteDataImmediately: false,  // false: 3天后删除数据，true: 立即删除
+);
+
+if (success) {
+  print('✅ 授权已取消');
+
+  // ⚠️ 重要：清除本地存储的 token
+  await secureStorage.delete(key: 'access_token');
+  await secureStorage.delete(key: 'refresh_token');
+
+  // 提示用户
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('授权已取消'),
+      content: Text('如需继续使用健康数据功能，请在3天内重新授权。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('知道了'),
+        ),
+      ],
+    ),
+  );
+} else {
+  print('❌ 取消授权失败');
+}
+```
+
+**参数说明：**
+- `deleteDataImmediately: false`（推荐）：给用户3天反悔期
+- `deleteDataImmediately: true`：立即删除所有数据
+
+### 完整使用示例
+
+```dart
+import 'package:health_bridge/health_bridge.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+class HealthDataManager {
+  final storage = FlutterSecureStorage();
+
+  /// 检查并获取健康数据
+  Future<void> fetchHealthData() async {
+    // 1. 获取 access_token
+    final accessToken = await storage.read(key: 'access_token');
+    if (accessToken == null) {
+      print('❌ 未登录，请先进行 OAuth 授权');
+      return;
+    }
+
+    // 2. 创建云侧客户端
+    final client = HuaweiCloudClient(
+      accessToken: accessToken,
+      clientId: 'your_client_id',
+    );
+
+    // 3. 检查隐私授权状态
+    final privacyStatus = await client.checkPrivacyAuthStatus();
+    if (!privacyStatus.isAuthorized) {
+      print('⚠️ 用户未在华为运动健康App中开启数据共享');
+      // TODO: 引导用户开启
+      return;
+    }
+
+    // 4. 查看授权的权限
+    final consents = await client.getUserConsents(appId: 'your_client_id');
+    print('✅ 已授权 ${consents.scopeCount} 个权限');
+
+    // 5. 检查是否有需要的权限
+    if (!consents.hasScope('https://www.huawei.com/healthkit/step.read')) {
+      print('⚠️ 没有步数数据权限');
+      return;
+    }
+
+    // 6. 读取健康数据
+    final result = await client.readHealthData(
+      dataType: HealthDataType.steps,
+      startTime: DateTime.now().subtract(Duration(days: 7)).millisecondsSinceEpoch,
+      endTime: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    print('📊 获取到 ${result.totalCount} 条步数数据');
+  }
+
+  /// 撤销授权
+  Future<void> logout() async {
+    final accessToken = await storage.read(key: 'access_token');
+    if (accessToken == null) return;
+
+    final client = HuaweiCloudClient(
+      accessToken: accessToken,
+      clientId: 'your_client_id',
+    );
+
+    // 取消授权
+    final success = await client.revokeConsent(
+      appId: 'your_client_id',
+      deleteDataImmediately: false,  // 保留3天
+    );
+
+    if (success) {
+      // 清除本地 token
+      await storage.delete(key: 'access_token');
+      await storage.delete(key: 'refresh_token');
+      print('✅ 已登出');
+    }
+  }
+}
+```
+
+### 最佳实践
+
+1. **调用顺序建议：**
+   ```
+   OAuth 授权 → 隐私授权状态检查 → 用户授权权限查询 → 读取健康数据
+   ```
+
+2. **错误处理：**
+   - 隐私未授权（`notAuthorized`）：引导用户去华为运动健康App开启数据共享
+   - 非健康用户（`notHealthUser`）：提示用户安装华为运动健康App
+   - 权限不足：提示用户重新授权，申请更多权限
+
+3. **安全提示：**
+   - 始终使用 `flutter_secure_storage` 存储 `access_token`
+   - 取消授权后立即清除本地 token
+   - 定期检查 token 是否过期
+
+### 演示页面
+
+授权管理功能已整合到华为 OAuth V2 页面中：
+- 文件路径：`example/lib/pages/huawei_oauth_test_page_v2.dart`
+- 在示例应用中点击"OAuth 授权管理"（V2 半托管）卡片
+- 完成 OAuth 授权后，页面下方会显示"🔐 授权管理"区域
+- 包含三个功能按钮：
+  - **隐私状态** - 查询隐私授权状态
+  - **查询权限** - 查看已授权的权限列表
+  - **取消授权** - 撤销所有授权
+
+**使用流程：**
+1. 点击"开始授权"完成 OAuth 2.0 授权
+2. 获取 access_token 后，向下滚动查看"授权管理"区域
+3. 点击对应按钮体验三个授权管理 API
+
+---
+
 ## Example App
 
 Check out the [example app](./example) for a complete implementation demonstrating all plugin features.
