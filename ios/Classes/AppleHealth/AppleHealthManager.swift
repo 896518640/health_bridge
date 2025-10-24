@@ -764,7 +764,12 @@ class AppleHealthManager {
         let end = endDate ?? now
         let queryLimit = limit ?? HealthManagerConfig.defaultQueryLimit
 
+        print("🔍 [readHealthData] 数据类型: \(dataType)")
+        print("🔍 [readHealthData] 查询类型: \(queryType)")
+        print("🔍 [readHealthData] 时间范围: \(start) - \(end)")
+
         // Handle blood pressure separately (composite data type)
+        // 血压只返回原子数据（所有测量记录），不支持聚合查询
         if dataType == "blood_pressure" {
             readBloodPressure(from: start, to: end, completion: completion)
             return
@@ -782,14 +787,35 @@ class AppleHealthManager {
             return
         }
         
-        // 注意：statistics 查询类型现在也返回原始数据，只是在 Flutter 端会按天分组展示
-        // 不使用 HKStatisticsCollectionQuery，而是返回所有原始记录
-
-        // Handle quantity types - 详情查询（获取所有原始记录）
-        print("📝 [Detail] 开始详情查询")
+        // ✅ 根据 queryType 选择查询方式
+        // 参考华为 Health Kit 设计：只有步数支持聚合查询（每天总步数）
+        // 血糖、血压、体重等只返回原子数据（所有测量记录）
+        if queryType == "statistics" && dataType == "steps" {
+            // 聚合查询：仅步数支持，返回每天的总步数（Sum）
+            print("📊 [Statistics] 开始步数聚合查询（每天总步数）")
+            readHealthDataStatistics(dataType: dataType, from: start, to: end, completion: completion)
+        } else {
+            // 详情查询：返回所有原始记录（原子数据）
+            // - 步数：每小时的步数增量（Delta）
+            // - 血糖：所有测量记录
+            // - 血压：所有测量记录
+            // - 体重：所有测量记录
+            print("📝 [Detail] 开始详情查询（原子数据）")
+            readHealthDataDetail(dataType: dataType, from: start, to: end, limit: queryLimit, completion: completion)
+        }
+    }
+    
+    /// 读取健康数据详情（原子数据）
+    private func readHealthDataDetail(
+        dataType: String,
+        from startDate: Date,
+        to endDate: Date,
+        limit: Int,
+        completion: @escaping ([[String: Any]], String?) -> Void
+    ) {
         print("📝 [Detail] 数据类型: \(dataType)")
-        print("📝 [Detail] 时间范围: \(start) - \(end)")
-        print("📝 [Detail] 查询限制: \(queryLimit) 条")
+        print("📝 [Detail] 时间范围: \(startDate) - \(endDate)")
+        print("📝 [Detail] 查询限制: \(limit) 条")
         
         guard let quantityType = getQuantityType(for: dataType) else {
             print("❌ [Detail] 不支持的数据类型: \(dataType)")
@@ -797,13 +823,13 @@ class AppleHealthManager {
             return
         }
 
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
 
         let query = HKSampleQuery(
             sampleType: quantityType,
             predicate: predicate,
-            limit: queryLimit,
+            limit: limit,
             sortDescriptors: [sortDescriptor]
         ) { _, samples, error in
             DispatchQueue.main.async {
@@ -833,13 +859,18 @@ class AppleHealthManager {
     }
 
     /// 读取健康数据统计（按天聚合）
+    /// 
+    /// 参考华为 Health Kit 设计理念：
+    /// - ✅ 步数：返回每天的总步数（Sum）- 这是唯一需要聚合的数据类型
+    /// - ❌ 血糖、血压：只返回原子数据，不支持聚合（平均值意义不大）
+    /// 
+    /// 注意：此方法目前仅用于步数查询
     private func readHealthDataStatistics(
         dataType: String,
         from startDate: Date,
         to endDate: Date,
         completion: @escaping ([[String: Any]], String?) -> Void
     ) {
-        print("📊 [Statistics] 开始聚合查询")
         print("📊 [Statistics] 数据类型: \(dataType)")
         print("📊 [Statistics] 时间范围: \(startDate) - \(endDate)")
         
@@ -885,32 +916,6 @@ class AppleHealthManager {
                     dayCount += 1
                     print("📅 [Statistics] 第 \(dayCount) 天: \(statistics.startDate)")
                     
-                    // 打印统计详情（血糖数据）
-                    if dataType == "glucose" {
-                        print("   🔍 [Statistics] 统计详情:")
-                        if let sum = statistics.sumQuantity() {
-                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
-                            print("      ├─ 累加和: \(sum.doubleValue(for: unit))")
-                        }
-                        if let average = statistics.averageQuantity() {
-                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
-                            print("      ├─ 平均值: \(average.doubleValue(for: unit))")
-                        }
-                        if let min = statistics.minimumQuantity() {
-                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
-                            print("      ├─ 最小值: \(min.doubleValue(for: unit))")
-                        }
-                        if let max = statistics.maximumQuantity() {
-                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
-                            print("      ├─ 最大值: \(max.doubleValue(for: unit))")
-                        }
-                        if let mostRecent = statistics.mostRecentQuantity() {
-                            let unit = self?.getUnit(for: dataType) ?? HKUnit.count()
-                            print("      ├─ 最近值: \(mostRecent.doubleValue(for: unit))")
-                        }
-                        print("      └─ 样本数: \(statistics.sources?.count ?? 0)")
-                    }
-                    
                     if let data = self?.createStatisticsDataDictionary(from: statistics, dataType: dataType) {
                         print("   ✓ 返回数据值: \(data["value"] ?? "nil")")
                         statisticsData.append(data)
@@ -929,104 +934,28 @@ class AppleHealthManager {
     }
     
     /// 获取统计查询选项
+    /// 
+    /// 参考华为 Health Kit：仅步数需要聚合查询
     private func getStatisticsOptions(for dataTypeKey: String) -> HKStatisticsOptions {
-        // 根据数据类型选择合适的统计选项
+        // 只有步数类型的累计数据使用聚合查询
         switch dataTypeKey {
-        // 累计型数据：步数、距离、卡路里等
         case "steps", "distance", "active_calories", "water":
-            return .cumulativeSum
-            
-        // 离散型数据（取平均值）：血糖、心率、血压、体温等
-        case "glucose", "heart_rate", "body_temperature", "oxygen_saturation",
-             "blood_pressure_systolic", "blood_pressure_diastolic":
-            return .discreteAverage
-            
-        // 身体测量数据（最近一次测量值）：体重、身高、体脂等
-        case "weight", "height", "body_fat", "bmi":
-            return .discreteAverage
-            
-        // 默认使用累加和
+            return .cumulativeSum  // 返回每天总和
         default:
             return .cumulativeSum
         }
     }
     
     /// 创建统计数据字典
+    /// 
+    /// 注意：此方法目前仅用于步数统计查询
     private func createStatisticsDataDictionary(from statistics: HKStatistics, dataType: String) -> [String: Any]? {
         let unit = getUnit(for: dataType)
         let timestamp = Int64(statistics.startDate.timeIntervalSince1970 * 1000)
-        let options = getStatisticsOptions(for: dataType)
         
-        print("   📝 [Statistics] 处理数据 - 时间: \(statistics.startDate)")
-        print("   📝 [Statistics] 统计选项: \(options)")
-        
-        // 根据统计选项获取相应的值
-        if options.contains(.cumulativeSum) {
-            if let sum = statistics.sumQuantity() {
-                // 累加和：用于步数、距离、卡路里等
-                var value = sum.doubleValue(for: unit)
-                print("   ✓ [Statistics] 累加和: \(value)")
-                
-                // Convert height from meters to centimeters if needed
-                if dataType == "height" {
-                    value = value * 100
-                }
-                
-                return [
-                    "type": dataType,
-                    "value": value,
-                    "timestamp": timestamp,
-                    "unit": getUnitString(for: dataType),
-                    "platform": "apple_health",
-                    "source": "Statistics",
-                    "metadata": [
-                        "queryType": "statistics",
-                        "interval": "daily",
-                        "aggregation": "sum"
-                    ]
-                ]
-            } else {
-                print("   ✗ [Statistics] 无累加和数据")
-            }
-        }
-        
-        if options.contains(.discreteAverage) {
-            if let average = statistics.averageQuantity() {
-                // 平均值：用于血糖、心率、体重等
-                var value = average.doubleValue(for: unit)
-                print("   ✓ [Statistics] 平均值: \(value)")
-                
-                // Convert height from meters to centimeters if needed
-                if dataType == "height" {
-                    value = value * 100
-                }
-                
-                return [
-                    "type": dataType,
-                    "value": value,
-                    "timestamp": timestamp,
-                    "unit": getUnitString(for: dataType),
-                    "platform": "apple_health",
-                    "source": "Statistics",
-                    "metadata": [
-                        "queryType": "statistics",
-                        "interval": "daily",
-                        "aggregation": "average"
-                    ]
-                ]
-            } else {
-                print("   ✗ [Statistics] 无平均值数据")
-            }
-        }
-        
-        // 尝试获取最小值和最大值（备选）
-        if let minimum = statistics.minimumQuantity() {
-            var value = minimum.doubleValue(for: unit)
-            print("   ✓ [Statistics] 最小值: \(value)")
-            
-            if dataType == "height" {
-                value = value * 100
-            }
+        // 只处理累加和统计（步数、距离、卡路里等）
+        if let sum = statistics.sumQuantity() {
+            let value = sum.doubleValue(for: unit)
             
             return [
                 "type": dataType,
@@ -1038,12 +967,11 @@ class AppleHealthManager {
                 "metadata": [
                     "queryType": "statistics",
                     "interval": "daily",
-                    "aggregation": "minimum"
+                    "aggregation": "sum"
                 ]
             ]
         }
         
-        print("   ⚠️ [Statistics] 该时间段无任何统计数据")
         return nil
     }
     

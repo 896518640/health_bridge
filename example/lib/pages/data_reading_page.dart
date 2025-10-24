@@ -37,15 +37,29 @@ class _DataReadingPageState extends State<DataReadingPage> {
 
   /// 获取当前平台的测试数据类型列表
   List<HealthDataType> _getTestDataTypes() {
+    List<HealthDataType> types;
+    
     switch (widget.platform) {
       case HealthPlatform.appleHealth:
-        return appleHealthTestTypes;
+        types = appleHealthTestTypes;
+        break;
       case HealthPlatform.huaweiHealth:
       case HealthPlatform.huaweiCloud:
-        return huaweiTestTypes;
+        types = huaweiTestTypes;
+        break;
       default:
-        return huaweiTestTypes;
+        types = huaweiTestTypes;
     }
+    
+    // 聚合查询时，过滤掉身高和体重（参考华为 Health Kit，只有步数支持聚合）
+    if (_queryType == 'statistics') {
+      return types.where((type) => 
+        type != HealthDataType.height && 
+        type != HealthDataType.weight
+      ).toList();
+    }
+    
+    return types;
   }
 
   /// 检查权限状态
