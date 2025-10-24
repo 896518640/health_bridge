@@ -32,7 +32,15 @@ abstract class HealthBridgePlatform extends PlatformInterface {
   }
 
   /// 初始化指定的健康平台
-  Future<HealthDataResult> initializeHealthPlatform(HealthPlatform platform) {
+  /// 
+  /// [platform] 要初始化的健康平台
+  /// [dataTypes] 可选：需要请求权限的数据类型列表，如果不传则使用默认数据类型
+  /// [operations] 可选：需要请求的操作类型列表，默认为读写
+  Future<HealthDataResult> initializeHealthPlatform(
+    HealthPlatform platform, {
+    List<HealthDataType>? dataTypes,
+    List<HealthDataOperation>? operations,
+  }) {
     throw UnimplementedError('initializeHealthPlatform() has not been implemented.');
   }
 

@@ -163,7 +163,8 @@ private extension HealthBridgePlugin {
     }
     
     func handleInitializeHealthPlatform(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let platform = extractPlatform(from: call.arguments, result: result) else { return }
+        guard let arguments = call.arguments as? [String: Any],
+              let platform = extractPlatform(from: arguments, result: result) else { return }
         
         guard platform == PluginConstants.appleHealthPlatform else {
             HealthLogger.log("Unsupported platform: \(platform)", level: .warning)
@@ -171,19 +172,43 @@ private extension HealthBridgePlugin {
             return
         }
         
-        HealthLogger.log("Initializing Apple Health...")
-        appleHealthManager?.initialize { [weak self] success, error in
-            if success {
-                HealthLogger.log("Apple Health initialized successfully")
-                let response = HealthResponse.success(data: [
-                    "status": "connected",
-                    "hasPermissions": true,
-                    "platform": PluginConstants.appleHealthPlatform
-                ])
-                result(response)
-            } else {
-                HealthLogger.log("Apple Health initialization failed: \(error ?? "Unknown error")", level: .error)
-                result(self?.createInitializationError(error: error))
+        // 提取可选的自定义数据类型和操作类型
+        let dataTypesArray = arguments["dataTypes"] as? [String]
+        let operationsArray = arguments["operations"] as? [String]
+        
+        if let dataTypes = dataTypesArray, let operations = operationsArray {
+            // 使用自定义数据类型初始化
+            HealthLogger.log("Initializing Apple Health with custom data types: \(dataTypes)")
+            appleHealthManager?.requestPermissions(for: dataTypes, operations: operations) { [weak self] success, error in
+                if success {
+                    HealthLogger.log("Apple Health initialized successfully with custom data types")
+                    let response = HealthResponse.success(data: [
+                        "status": "connected",
+                        "hasPermissions": true,
+                        "platform": PluginConstants.appleHealthPlatform
+                    ])
+                    result(response)
+                } else {
+                    HealthLogger.log("Apple Health initialization failed: \(error ?? "Unknown error")", level: .error)
+                    result(self?.createInitializationError(error: error))
+                }
+            }
+        } else {
+            // 使用默认数据类型初始化
+            HealthLogger.log("Initializing Apple Health with default data types...")
+            appleHealthManager?.initialize { [weak self] success, error in
+                if success {
+                    HealthLogger.log("Apple Health initialized successfully")
+                    let response = HealthResponse.success(data: [
+                        "status": "connected",
+                        "hasPermissions": true,
+                        "platform": PluginConstants.appleHealthPlatform
+                    ])
+                    result(response)
+                } else {
+                    HealthLogger.log("Apple Health initialization failed: \(error ?? "Unknown error")", level: .error)
+                    result(self?.createInitializationError(error: error))
+                }
             }
         }
     }

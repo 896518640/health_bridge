@@ -5,6 +5,7 @@ import 'pages/data_reading_page.dart';
 import 'pages/huawei_oauth_test_page.dart';
 import 'pages/huawei_oauth_test_page_v2.dart'; // 新增：半托管模式
 import 'pages/cloud_data_reading_page.dart';
+import 'utils/constants.dart';
 
 void main() {
   print('========================================');
@@ -93,8 +94,32 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoading = true);
 
     try {
+      // 根据平台选择对应的测试数据类型
+      List<HealthDataType> dataTypes;
+      List<HealthDataOperation> operations;
+
+      switch (_selectedPlatform!) {
+        case HealthPlatform.appleHealth:
+          dataTypes = appleHealthTestTypes;
+          operations = [HealthDataOperation.read, HealthDataOperation.write];
+          print('>>> 使用 Apple Health 测试数据类型: ${dataTypes.map((t) => t.displayName).join(", ")}');
+          break;
+        case HealthPlatform.huaweiHealth:
+        case HealthPlatform.huaweiCloud:
+          dataTypes = huaweiTestTypes;
+          operations = [HealthDataOperation.read]; // 华为健康只支持读取
+          print('>>> 使用华为健康测试数据类型: ${dataTypes.map((t) => t.displayName).join(", ")}');
+          break;
+        default:
+          dataTypes = [];
+          operations = [HealthDataOperation.read];
+      }
+
+      // 使用自定义数据类型初始化（新 API）
       final result = await HealthBridge.initializeHealthPlatform(
         _selectedPlatform!,
+        dataTypes: dataTypes,
+        operations: operations,
       );
 
       print('>>> 初始化结果: ${result.status}');
@@ -105,7 +130,7 @@ class _HomePageState extends State<HomePage> {
       if (result.isSuccess) {
         setState(() => _isInitialized = true);
         print('>>> ✓ ${_selectedPlatform!.displayName} 初始化成功!');
-        _showSuccess('${_selectedPlatform!.displayName} 初始化成功');
+        _showSuccess('${_selectedPlatform!.displayName} 初始化成功\n已授权 ${dataTypes.length} 种数据类型');
       } else {
         print('!!! 初始化失败: ${result.message}');
         _showError('初始化失败: ${result.message}');

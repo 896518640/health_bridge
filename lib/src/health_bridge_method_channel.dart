@@ -43,11 +43,27 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
   }
 
   @override
-  Future<HealthDataResult> initializeHealthPlatform(HealthPlatform platform) async {
+  Future<HealthDataResult> initializeHealthPlatform(
+    HealthPlatform platform, {
+    List<HealthDataType>? dataTypes,
+    List<HealthDataOperation>? operations,
+  }) async {
     try {
+      final Map<String, dynamic> arguments = {
+        'platform': platform.key,
+      };
+      
+      // 如果指定了自定义数据类型，传递给 native 层
+      if (dataTypes != null) {
+        arguments['dataTypes'] = dataTypes.map((t) => t.key).toList();
+      }
+      if (operations != null) {
+        arguments['operations'] = operations.map((o) => o.key).toList();
+      }
+
       final result = await methodChannel.invokeMethod(
         'initializeHealthPlatform',
-        {'platform': platform.key},
+        arguments,
       );
 
       if (result == null) {
