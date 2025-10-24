@@ -43,6 +43,18 @@ class AppleHealthManager {
     }
     
     // MARK: - Initialization
+    
+    // ⚠️ DEPRECATED: 不再提供默认数据类型，开发者必须通过 requestPermissions 明确指定需要的数据类型
+    // 这样可以避免过度请求权限，符合 Apple 的最小权限原则
+    //
+    // 使用方式：
+    // appleHealthManager.requestPermissions(
+    //     for: ["glucose", "steps", "weight"],
+    //     operations: ["read", "write"]
+    // )
+    
+    /*
+    @available(*, deprecated, message: "Use requestPermissions(for:operations:) instead with explicit data types")
     func initialize(completion: @escaping (Bool, String?) -> Void) {
         guard isHealthKitAvailable else {
             completion(false, "HealthKit is not available on this device")
@@ -83,6 +95,7 @@ class AppleHealthManager {
             HealthDataTypes.bodyTemperatureType
         ]
     }
+    */
     
     // MARK: - Glucose Data Management
     func insertGlucoseData(value: Double, date: Date, completion: @escaping (Bool, String?) -> Void) {

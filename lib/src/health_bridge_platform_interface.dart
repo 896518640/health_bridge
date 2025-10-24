@@ -34,12 +34,23 @@ abstract class HealthBridgePlatform extends PlatformInterface {
   /// 初始化指定的健康平台
   /// 
   /// [platform] 要初始化的健康平台
-  /// [dataTypes] 可选：需要请求权限的数据类型列表，如果不传则使用默认数据类型
-  /// [operations] 可选：需要请求的操作类型列表，默认为读写
+  /// [dataTypes] 必需：需要请求权限的数据类型列表（如 [HealthDataType.glucose, HealthDataType.steps]）
+  /// [operations] 必需：需要请求的操作类型列表（如 [HealthDataOperation.read, HealthDataOperation.write]）
+  /// 
+  /// ⚠️ 注意：不再提供默认数据类型，开发者必须明确指定需要的数据类型，符合最小权限原则
+  /// 
+  /// 使用示例：
+  /// ```dart
+  /// await HealthBridge.initializeHealthPlatform(
+  ///   HealthPlatform.appleHealth,
+  ///   dataTypes: [HealthDataType.glucose, HealthDataType.steps, HealthDataType.weight],
+  ///   operations: [HealthDataOperation.read, HealthDataOperation.write],
+  /// );
+  /// ```
   Future<HealthDataResult> initializeHealthPlatform(
     HealthPlatform platform, {
-    List<HealthDataType>? dataTypes,
-    List<HealthDataOperation>? operations,
+    required List<HealthDataType> dataTypes,
+    required List<HealthDataOperation> operations,
   }) {
     throw UnimplementedError('initializeHealthPlatform() has not been implemented.');
   }

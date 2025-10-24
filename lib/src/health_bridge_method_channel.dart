@@ -45,21 +45,32 @@ class MethodChannelHealthBridge extends HealthBridgePlatform {
   @override
   Future<HealthDataResult> initializeHealthPlatform(
     HealthPlatform platform, {
-    List<HealthDataType>? dataTypes,
-    List<HealthDataOperation>? operations,
+    required List<HealthDataType> dataTypes,
+    required List<HealthDataOperation> operations,
   }) async {
     try {
+      // 验证参数
+      if (dataTypes.isEmpty) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: platform,
+          message: 'dataTypes cannot be empty. Please specify which data types you need to access.',
+        );
+      }
+      
+      if (operations.isEmpty) {
+        return HealthDataResult(
+          status: HealthDataStatus.error,
+          platform: platform,
+          message: 'operations cannot be empty. Please specify read and/or write operations.',
+        );
+      }
+
       final Map<String, dynamic> arguments = {
         'platform': platform.key,
+        'dataTypes': dataTypes.map((t) => t.key).toList(),
+        'operations': operations.map((o) => o.key).toList(),
       };
-      
-      // 如果指定了自定义数据类型，传递给 native 层
-      if (dataTypes != null) {
-        arguments['dataTypes'] = dataTypes.map((t) => t.key).toList();
-      }
-      if (operations != null) {
-        arguments['operations'] = operations.map((o) => o.key).toList();
-      }
 
       final result = await methodChannel.invokeMethod(
         'initializeHealthPlatform',
