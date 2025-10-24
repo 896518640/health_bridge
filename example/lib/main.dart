@@ -188,6 +188,165 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// 验证读取权限（仅 Apple Health）
+  Future<void> _verifyReadPermissions() async {
+    if (_selectedPlatform != HealthPlatform.appleHealth) {
+      _showError('仅 Apple Health 支持权限验证');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 获取当前请求的数据类型
+      final dataTypes = appleHealthTestTypes;
+      
+      print('>>> 开始验证 ${dataTypes.length} 个数据类型的读取权限...');
+      print('>>> 数据类型列表: ${dataTypes.map((t) => t.key).join(", ")}');
+      
+      // 使用统一的 checkPermissions API（读取权限）
+      final permissions = await HealthBridge.checkPermissions(
+        platform: HealthPlatform.appleHealth,
+        dataTypes: dataTypes,
+        operation: HealthDataOperation.read,  // ✅ 使用枚举，不是字符串
+      );
+      
+      // checkPermissions 返回 Map<HealthDataType, HealthPermissionStatus>
+      // 需要转换成 Map<String, String> 用于展示
+      final permissionsMap = permissions.map(
+        (key, value) => MapEntry(key.key, value.name),
+      );
+      
+      print('>>> 权限验证结果: $permissionsMap');
+      print('>>> 返回的数据类型数量: ${permissionsMap.length}');
+      
+      // 分类统计
+      final granted = <String>[];
+      final denied = <String>[];
+      final notDetermined = <String>[];
+      
+      permissionsMap.forEach((key, value) {
+        switch (value) {
+          case 'granted':
+            granted.add(key);
+            break;
+          case 'denied':
+            denied.add(key);
+            break;
+          case 'not_determined':
+          default:
+            notDetermined.add(key);
+        }
+      });
+      
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.verified_user, color: Colors.blue),
+              const SizedBox(width: 8),
+              const Text('权限验证结果'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (granted.isNotEmpty) ...[
+                  Text(
+                    '✅ 已授权 (${granted.length})',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  ...granted.map((key) => 
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, top: 4),
+                      child: Text('• $key'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (denied.isNotEmpty) ...[
+                  Text(
+                    '❌ 权限被拒绝 (${denied.length})',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                  ...denied.map((key) => 
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, top: 4),
+                      child: Text('• $key'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (notDetermined.isNotEmpty) ...[
+                  Text(
+                    '⚠️ 未确定 (${notDetermined.length})',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  ...notDetermined.map((key) => 
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, top: 4),
+                      child: Text('• $key'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const Divider(),
+                const Text(
+                  '💡 注意：',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '⚠️ Apple 隐私限制说明：\n'
+                  '• "已授权"：查询到数据，肯定有权限 ✅\n'
+                  '• "未确定"：无数据，可能是拒绝或真的没数据 ⚠️\n'
+                  '• 即使拒绝权限，查询也不报错（隐私保护）\n'
+                  '• 建议：有数据的才算已授权，无数据的无法判断\n'
+                  '• 查询范围：最近90天',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            if (denied.isNotEmpty)
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // TODO: 打开系统设置
+                },
+                icon: const Icon(Icons.settings),
+                label: const Text('去设置'),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      print('!!! 权限验证异常: $e');
+      _showError('权限验证失败: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   /// 打开权限管理页面
   void _openPermissionManagement() {
     if (_selectedPlatform == null) {
@@ -431,6 +590,41 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   const SizedBox(height: 12),
+
+                  // 验证读取权限 (仅 Apple Health)
+                  if (_selectedPlatform == HealthPlatform.appleHealth) ...[
+                    Card(
+                      elevation: 2,
+                      child: ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.verified_user,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                        title: const Text(
+                          '验证读取权限',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          '查看哪些数据类型已授权（仅iOS）\n'
+                          '⚠️ 限制：只能验证"有数据"的权限',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios),
+                        onTap: _isInitialized ? _verifyReadPermissions : null,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   // 数据读取
                   Card(

@@ -588,50 +588,163 @@ class AppleHealthManager {
     // MARK: - Permission Management
 
     /// 检查指定数据类型的权限状态
+    /// 
+    /// - 写入权限：直接通过 authorizationStatus 查询（快速）
+    /// - 读取权限：通过实际查询数据验证（较慢，但是唯一可靠的方式）
     func checkPermissions(for dataTypes: [String], operation: String, completion: @escaping ([String: String]) -> Void) {
         guard isHealthKitAvailable else {
             completion([:])
             return
         }
 
-        var permissionStatus: [String: String] = [:]
-
-        for dataTypeKey in dataTypes {
-            var objectType: HKObjectType? = nil
-
-            // Handle blood pressure (composite type)
-            if dataTypeKey == "blood_pressure" {
-                // 对于血压，检查收缩压的权限即可（两者一起授权）
-                objectType = HealthDataTypes.systolicBloodPressureType
-            }
-            // Handle workout type
-            else if dataTypeKey == "workout" {
-                objectType = HKWorkoutType.workoutType()
-            }
-            // Handle sleep types
-            else if dataTypeKey.hasPrefix("sleep_") {
-                objectType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)
-            }
-            // Handle quantity types
-            else {
-                objectType = getQuantityType(for: dataTypeKey)
-            }
-
-            if let type = objectType {
-                let status: HKAuthorizationStatus
-
-                if operation == "write" {
-                    status = healthStore.authorizationStatus(for: type)
-                } else {
-                    // HealthKit 不允许检查读取权限状态，总是返回 notDetermined
-                    status = .notDetermined
+        if operation == "write" {
+            // 写入权限可以直接查询
+            var permissionStatus: [String: String] = [:]
+            
+            for dataTypeKey in dataTypes {
+                var objectType: HKObjectType? = nil
+                
+                // Handle blood pressure (composite type)
+                if dataTypeKey == "blood_pressure" {
+                    objectType = HealthDataTypes.systolicBloodPressureType
                 }
-
-                permissionStatus[dataTypeKey] = convertAuthorizationStatus(status)
+                // Handle workout type
+                else if dataTypeKey == "workout" {
+                    objectType = HKWorkoutType.workoutType()
+                }
+                // Handle sleep types
+                else if dataTypeKey.hasPrefix("sleep_") {
+                    objectType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)
+                }
+                // Handle quantity types
+                else {
+                    objectType = getQuantityType(for: dataTypeKey)
+                }
+                
+                if let type = objectType {
+                    let status = healthStore.authorizationStatus(for: type)
+                    permissionStatus[dataTypeKey] = convertAuthorizationStatus(status)
+                }
             }
+            
+            completion(permissionStatus)
+        } else {
+            // 读取权限需要通过实际查询验证
+            verifyReadPermissions(for: dataTypes, completion: completion)
         }
-
-        completion(permissionStatus)
+    }
+    
+    /// 验证读取权限（通过尝试查询每个数据类型）
+    /// 
+    /// ⚠️ 重要限制：由于 Apple 隐私保护，无法准确区分"拒绝权限"和"没有数据"
+    /// 
+    /// Apple HealthKit 设计：
+    /// - 如果用户授权了：查询成功，返回数据或空数组
+    /// - 如果用户拒绝了：查询也成功，返回空数组（故意设计）
+    /// 
+    /// 返回值说明：
+    /// - "granted": 有数据，肯定已授权 ✅
+    /// - "denied": 查询返回 HKError.errorAuthorizationDenied（极少见）
+    /// - "not_determined": 无数据，**无法确定**是"拒绝"还是"真的没数据" ⚠️
+    /// 
+    /// ⚠️ 性能开销：每个数据类型都会执行一次查询
+    private func verifyReadPermissions(for dataTypes: [String], completion: @escaping ([String: String]) -> Void) {
+        guard isHealthKitAvailable else {
+            completion([:])
+            return
+        }
+        
+        var results: [String: String] = [:]
+        let resultsLock = NSLock()  // 🔒 添加锁保证线程安全
+        let group = DispatchGroup()
+        // 查询时间范围：最近30天，平衡性能和准确性
+        let startDate = Calendar.current.date(byAdding: .day, value: -90, to: Date())!
+        let endDate = Date()
+        
+        print("🔍 [verifyReadPermissions] 开始验证 \(dataTypes.count) 个数据类型")
+        print("🔍 [verifyReadPermissions] 数据类型列表: \(dataTypes)")
+        
+        for dataTypeKey in dataTypes {
+            group.enter()
+            
+            print("🔍 [verifyReadPermissions] 处理数据类型: \(dataTypeKey)")
+            
+            // 获取对应的 HKSampleType
+            var sampleType: HKSampleType?
+            
+            if dataTypeKey == "blood_pressure" {
+                print("🔍 [verifyReadPermissions] blood_pressure -> systolicBloodPressureType")
+                sampleType = HealthDataTypes.systolicBloodPressureType
+            } else if dataTypeKey == "workout" {
+                print("🔍 [verifyReadPermissions] workout -> workoutType")
+                sampleType = HKWorkoutType.workoutType()
+            } else if dataTypeKey.hasPrefix("sleep_") {
+                print("🔍 [verifyReadPermissions] sleep_* -> sleepAnalysis")
+                sampleType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)
+            } else if let quantityType = getQuantityType(for: dataTypeKey) {
+                print("🔍 [verifyReadPermissions] \(dataTypeKey) -> quantityType (identifier: \(quantityType.identifier))")
+                sampleType = quantityType
+            }
+            
+            guard let type = sampleType else {
+                print("⚠️ [verifyReadPermissions] \(dataTypeKey) - unsupported (无法获取 HKSampleType)")
+                resultsLock.lock()
+                results[dataTypeKey] = "not_determined"
+                resultsLock.unlock()
+                group.leave()
+                continue
+            }
+            
+            // 尝试查询数据来验证权限
+            let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]  // 按时间倒序，获取最新数据
+            ) { _, samples, error in
+                defer { group.leave() }
+                
+                print("📋 [Permission] \(dataTypeKey) - 查询回调被调用")
+                
+                // 🔒 使用锁保证线程安全
+                resultsLock.lock()
+                defer { resultsLock.unlock() }
+                
+                if let error = error {
+                    // 检查错误码
+                    if let hkError = error as? HKError {
+                        print("⚠️ [Permission] \(dataTypeKey) - HKError: \(hkError.localizedDescription), Code: \(hkError.code.rawValue)")
+                        if hkError.code == .errorAuthorizationDenied {
+                            results[dataTypeKey] = "denied"
+                        } else {
+                            results[dataTypeKey] = "not_determined"
+                        }
+                    } else {
+                        print("⚠️ [Permission] \(dataTypeKey) - Error (not HKError): \(error.localizedDescription)")
+                        results[dataTypeKey] = "not_determined"
+                    }
+                } else if let samples = samples, !samples.isEmpty {
+                    // ✅ 有数据，肯定已授权
+                    print("✅ [Permission] \(dataTypeKey) - granted (found \(samples.count) sample(s))")
+                    results[dataTypeKey] = "granted"
+                } else {
+                    // ⚠️ 查询成功但无数据 -> 无法确定是"未授权"还是"真的没数据"
+                    // Apple 隐私保护：即使拒绝权限，查询也返回空数组，无法区分
+                    print("⚠️ [Permission] \(dataTypeKey) - not_determined (no samples found, could be denied or no data)")
+                    results[dataTypeKey] = "not_determined"
+                }
+                print("📋 [Permission] \(dataTypeKey) - 结果已设置: \(results[dataTypeKey] ?? "nil")")
+            }
+            
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            print("✅ [verifyReadPermissions] 验证完成，返回 \(results.count) 个结果")
+            print("✅ [verifyReadPermissions] 结果详情: \(results)")
+            completion(results)
+        }
     }
 
     /// 申请指定数据类型的权限
