@@ -5,12 +5,10 @@ import 'health_data_detail_page.dart';
 /// 平台权限管理页面（iOS风格）
 class PlatformPermissionPage extends StatefulWidget {
   final HealthPlatform platform;
-  final bool skipInitialization; // 是否跳过初始化（已在上级页面完成）
 
   const PlatformPermissionPage({
     super.key,
     required this.platform,
-    this.skipInitialization = false,
   });
 
   @override
@@ -48,25 +46,19 @@ class _PlatformPermissionPageState extends State<PlatformPermissionPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.skipInitialization) {
-      // 跳过初始化，直接标记为已初始化并检查权限
-      _isInitialized = true;
-      _checkAllPermissions();
-    } else {
-      // 正常初始化流程
-      _initializePlatform();
-    }
+    // 进入页面时只检查权限状态，不自动授权
+    _checkAllPermissions();
   }
 
-  /// 初始化平台
-  Future<void> _initializePlatform() async {
+  /// 一键授权所有权限
+  Future<void> _requestAllPermissions() async {
     setState(() => _isLoading = true);
 
     try {
       final dataTypes = _supportedDataTypes;
       final operations = [HealthDataOperation.read];
 
-      print('>>> 初始化平台: ${widget.platform.displayName}');
+      print('>>> 一键授权所有权限: ${widget.platform.displayName}');
       print('>>> 数据类型: ${dataTypes.map((t) => t.displayName).join(", ")}');
 
       final result = await HealthBridge.initializeHealthPlatform(
@@ -79,16 +71,22 @@ class _PlatformPermissionPageState extends State<PlatformPermissionPage> {
 
       if (result.isSuccess) {
         setState(() => _isInitialized = true);
-        print('>>> 初始化成功');
+        print('>>> 授权成功，开始验证数据访问...');
         
-        // 初始化成功后，检查权限状态
+        // 授权成功后，延迟一下让系统完成授权
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        // 重新检查权限状态
         await _checkAllPermissions();
+        
+        // 强制读取最近7天的数据来验证授权是否真正生效
+        await _verifyAuthorizationByReadingData(dataTypes);
       } else {
-        _showError('初始化失败', result.message ?? '未知错误');
+        _showError('授权失败', result.message ?? '未知错误');
       }
     } catch (e) {
-      print('!!! 初始化异常: $e');
-      _showError('初始化异常', e.toString());
+      print('!!! 授权异常: $e');
+      _showError('授权异常', e.toString());
     } finally {
       setState(() => _isLoading = false);
     }
@@ -107,11 +105,16 @@ class _PlatformPermissionPageState extends State<PlatformPermissionPage> {
 
       setState(() {
         _permissionStatus = permissions;
+        _isInitialized = true;  // ✅ 标记为已初始化
       });
 
       print('>>> 权限状态: ${permissions.map((k, v) => MapEntry(k.key, v.name))}');
     } catch (e) {
       print('!!! 检查权限失败: $e');
+      // 即使失败也标记为已初始化，避免一直显示加载
+      if (mounted) {
+        setState(() => _isInitialized = true);
+      }
     }
   }
 
@@ -151,6 +154,9 @@ class _PlatformPermissionPageState extends State<PlatformPermissionPage> {
           // 延迟后重新检查权限
           await Future.delayed(const Duration(milliseconds: 500));
           await _checkAllPermissions();
+          
+          // 通过读取数据验证授权是否生效
+          await _verifyAuthorizationByReadingData(notAuthorizedTypes);
         } else {
           _showError('权限请求失败', result.message ?? '未知错误');
         }
@@ -168,6 +174,9 @@ class _PlatformPermissionPageState extends State<PlatformPermissionPage> {
         if (result.isSuccess) {
           await Future.delayed(const Duration(milliseconds: 500));
           await _checkAllPermissions();
+          
+          // 通过读取数据验证授权是否生效
+          await _verifyAuthorizationByReadingData([dataType]);
         } else {
           _showError('权限请求失败', result.message ?? '未知错误');
         }
@@ -179,6 +188,149 @@ class _PlatformPermissionPageState extends State<PlatformPermissionPage> {
       setState(() => _isLoading = false);
     }
   }
+
+  /// 通过读取数据验证授权是否真正生效（一键授权后调用）
+  Future<void> _verifyAuthorizationByReadingData(List<HealthDataType> dataTypes) async {
+    try {
+      final now = DateTime.now();
+      final sevenDaysAgo = now.subtract(const Duration(days: 7));
+      
+      print('>>> 开始验证授权：读取最近7天数据...');
+      
+      // 记录有数据和无数据的类型
+      final typesWithData = <HealthDataType>[];
+      final typesWithoutData = <HealthDataType>[];
+      
+      // 强制读取每个数据类型的数据
+      for (final dataType in dataTypes) {
+        try {
+          print('>>> 读取 ${dataType.displayName} 数据...');
+          
+          final result = await HealthBridge.readHealthData(
+            platform: widget.platform,
+            dataType: dataType,
+            startDate: sevenDaysAgo,
+            endDate: now,
+          );
+          
+          print('>>> ${dataType.displayName}: ${result.data.length} 条数据');
+          
+          if (result.data.isNotEmpty) {
+            typesWithData.add(dataType);
+          } else {
+            typesWithoutData.add(dataType);
+          }
+        } catch (e) {
+          print('!!! 读取 ${dataType.displayName} 失败: $e');
+          typesWithoutData.add(dataType);
+        }
+      }
+      
+      if (!mounted) return;
+      
+      // 判断授权是否真正生效
+      if (typesWithData.isEmpty) {
+        // 所有数据类型都没有数据，授权可能失败
+        _showAuthorizationVerificationFailed(typesWithoutData);
+      } else {
+        // 至少有一个数据类型有数据，授权成功
+        _showAuthorizationVerificationSuccess(typesWithData, typesWithoutData);
+      }
+    } catch (e) {
+      print('!!! 验证授权失败: $e');
+      // 不显示错误，静默失败
+    }
+  }
+  
+
+
+  /// 显示授权验证失败（所有数据都为空）
+  void _showAuthorizationVerificationFailed(List<HealthDataType> emptyDataTypes) {
+    final typeNames = emptyDataTypes.map((t) => t.displayName).join('、');
+    
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              CupertinoIcons.exclamationmark_triangle_fill,
+              color: CupertinoColors.systemOrange,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Text('授权验证失败'),
+          ],
+        ),
+        content: Text(
+          '已请求 $typeNames 权限，但无法读取任何数据。\n\n'
+          '可能原因：\n'
+          '1. 授权未完全生效，请重试\n'
+          '2. 设备中没有任何健康数据\n'
+          '3. 系统限制了数据访问\n\n'
+          '${widget.platform == HealthPlatform.appleHealth 
+              ? '建议：\n• 打开"健康"应用，确认有数据\n• 检查"数据访问与设备"中的权限\n• 尝试重新授权' 
+              : '建议：打开健康应用，确认有数据并重新授权'}',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () {
+              Navigator.pop(context);
+              _requestAllPermissions(); // 重新授权
+            },
+            child: const Text('重新授权'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示授权验证成功
+  void _showAuthorizationVerificationSuccess(
+    List<HealthDataType> typesWithData,
+    List<HealthDataType> typesWithoutData,
+  ) {
+    final successNames = typesWithData.map((t) => t.displayName).join('、');
+    final emptyNames = typesWithoutData.map((t) => t.displayName).join('、');
+    
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              CupertinoIcons.checkmark_circle_fill,
+              color: CupertinoColors.systemGreen,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Text('授权成功'),
+          ],
+        ),
+        content: Text(
+          '已成功读取到数据，授权生效！\n\n'
+          '✓ 有数据：$successNames\n'
+          '${typesWithoutData.isNotEmpty ? '\n○ 暂无数据：$emptyNames\n（设备可能未记录这些数据）' : ''}',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('好的'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+
 
   /// 跳转到数据详情页
   void _navigateToDataDetail(HealthDataType dataType) async {
@@ -392,6 +544,33 @@ class _PlatformPermissionPageState extends State<PlatformPermissionPage> {
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // 一键授权按钮
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  color: _getPlatformColor(),
+                  borderRadius: BorderRadius.circular(16),
+                  onPressed: _isLoading ? null : _requestAllPermissions,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.checkmark_shield_fill,
+                        color: CupertinoColors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '一键授权所有权限',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: CupertinoColors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

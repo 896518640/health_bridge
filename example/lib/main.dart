@@ -80,88 +80,12 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// 打开平台权限页面（优化：先授权再进入）
-  void _openPlatformPermission(HealthPlatform platform) async {
-    // 对于 Apple Health，先在主页面完成授权，再进入权限管理页
-    if (platform == HealthPlatform.appleHealth) {
-      await _initializeAppleHealth(platform);
-    } else {
-      // 其他平台直接进入
-      _navigateToPlatformPermissionPage(platform);
-    }
-  }
-
-  /// 初始化 Apple Health（在主页面完成授权）
-  Future<void> _initializeAppleHealth(HealthPlatform platform) async {
-    // 显示加载对话框
-    showCupertinoDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const CupertinoAlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CupertinoActivityIndicator(radius: 14),
-            SizedBox(height: 16),
-            Text('正在请求授权...'),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      // 定义需要授权的数据类型
-      final dataTypes = [
-        HealthDataType.steps,
-        HealthDataType.glucose,
-        HealthDataType.bloodPressure,
-        HealthDataType.height,
-        HealthDataType.weight,
-      ];
-
-      print('>>> 开始初始化 Apple Health');
-      print('>>> 数据类型: ${dataTypes.map((t) => t.displayName).join(", ")}');
-
-      // 初始化并请求授权
-      final result = await HealthBridge.initializeHealthPlatform(
-        platform,
-        dataTypes: dataTypes,
-        operations: [HealthDataOperation.read],
-      );
-
-      // 关闭加载对话框
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      if (result.isSuccess) {
-        print('>>> Apple Health 初始化成功');
-        
-        // 延迟一下，让用户完成系统授权弹窗
-        await Future.delayed(const Duration(milliseconds: 500));
-        
-        // 进入权限管理页面
-        _navigateToPlatformPermissionPage(platform);
-      } else {
-        print('!!! 初始化失败: ${result.message}');
-        _showError('初始化失败: ${result.message ?? "未知错误"}');
-      }
-    } catch (e) {
-      // 关闭加载对话框
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-      print('!!! 初始化异常: $e');
-      _showError('初始化异常: $e');
-    }
-  }
-
-  /// 跳转到平台权限页面
-  void _navigateToPlatformPermissionPage(HealthPlatform platform) {
+  /// 打开平台权限页面
+  void _openPlatformPermission(HealthPlatform platform) {
     Navigator.of(context).push(
       CupertinoPageRoute(
         builder: (context) => PlatformPermissionPage(
           platform: platform,
-          skipInitialization: platform == HealthPlatform.appleHealth, // Apple Health 已在主页面初始化
         ),
       ),
     );
