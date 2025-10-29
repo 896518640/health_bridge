@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:health_bridge/health_bridge.dart';
 
-/// 健康数据详情页面
+/// 健康数据详情页面 - iOS风格
 class HealthDataDetailPage extends StatelessWidget {
   final HealthDataType dataType;
   final List<HealthData> dataList;
   final HealthPlatform platform;
-  final bool isGroupedByDay; // 是否按天分组显示
+  final bool isGroupedByDay;
 
   const HealthDataDetailPage({
     super.key,
@@ -18,533 +18,303 @@ class HealthDataDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(dataType.displayName),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Center(
-              child: Text(
-                isGroupedByDay 
-                    ? '共 ${dataList.length} 条 (按天分组)'
-                    : '共 ${dataList.length} 条',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: Text(dataType.displayName),
+        backgroundColor: CupertinoColors.systemBackground,
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: _getDataTypeColor().withOpacity(0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            '${dataList.length} 条',
+            style: TextStyle(
+              fontSize: 13,
+              color: _getDataTypeColor(),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        child: dataList.isEmpty
+            ? _buildEmptyView()
+            : (isGroupedByDay 
+                ? _buildGroupedByDayView(context)
+                : _buildListView(context)),
+      ),
+    );
+  }
+
+  /// 空数据视图
+  Widget _buildEmptyView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            _getDataTypeIcon(),
+            size: 80,
+            color: CupertinoColors.systemGrey3,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '暂无${dataType.displayName}数据',
+            style: const TextStyle(
+              fontSize: 17,
+              color: CupertinoColors.secondaryLabel,
             ),
           ),
         ],
       ),
-      body: isGroupedByDay 
-          ? _buildGroupedByDayView(context)
-          : _buildListView(context),
     );
   }
 
   /// 构建普通列表视图
   Widget _buildListView(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(8.0),
-      itemCount: dataList.length,
-      itemBuilder: (context, index) {
-        final data = dataList[index];
-        return _buildDataCard(context, data, index);
-      },
+    return CupertinoScrollbar(
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: dataList.length,
+        itemBuilder: (context, index) {
+          final data = dataList[index];
+          return _buildDataCard(data);
+        },
+      ),
     );
   }
 
   /// 构建按天分组的视图
   Widget _buildGroupedByDayView(BuildContext context) {
-    // 按天分组数据
-    final groupedData = _groupDataByDay(dataList);
+    final groupedData = _groupDataByDay();
     
-    return ListView.builder(
-      padding: const EdgeInsets.all(8.0),
-      itemCount: groupedData.length,
-      itemBuilder: (context, index) {
-        final entry = groupedData[index];
-        final date = entry['date'] as String;
-        final dayData = entry['data'] as List<HealthData>;
-        
-        return _buildDayGroupCard(context, date, dayData);
-      },
+    return CupertinoScrollbar(
+      child: CustomScrollView(
+        slivers: [
+          ...groupedData.entries.map((entry) {
+            return SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 日期标题
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 12),
+                      child: Text(
+                        entry.key,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: CupertinoColors.secondaryLabel,
+                        ),
+                      ),
+                    ),
+                    // 该天的数据
+                    ...entry.value.map((data) => _buildDataCard(data)),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  /// 构建数据卡片
+  Widget _buildDataCard(HealthData data) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _getDataTypeColor().withOpacity(0.08),
+            _getDataTypeColor().withOpacity(0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _getDataTypeColor().withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          // 图标
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: CupertinoColors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: _getDataTypeColor().withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              _getDataTypeIcon(),
+              color: _getDataTypeColor(),
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          // 数据信息
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 数值
+                Text(
+                  _formatValue(data),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // 时间
+                Text(
+                  _formatDateTime(DateTime.fromMillisecondsSinceEpoch(data.timestamp)),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: CupertinoColors.secondaryLabel,
+                  ),
+                ),
+                // 数据来源
+                if (data.source != null)
+                  Text(
+                    data.source!,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: CupertinoColors.tertiaryLabel,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // 来源标识
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemGrey6,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              platform.displayName,
+              style: const TextStyle(
+                fontSize: 11,
+                color: CupertinoColors.secondaryLabel,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   /// 按天分组数据
-  List<Map<String, dynamic>> _groupDataByDay(List<HealthData> data) {
+  Map<String, List<HealthData>> _groupDataByDay() {
     final Map<String, List<HealthData>> grouped = {};
     
-    for (final item in data) {
-      final date = DateTime.fromMillisecondsSinceEpoch(item.timestamp);
-      final dateKey = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-      
-      if (!grouped.containsKey(dateKey)) {
-        grouped[dateKey] = [];
-      }
-      grouped[dateKey]!.add(item);
+    for (final data in dataList) {
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(data.timestamp);
+      final dateKey = _formatDate(dateTime);
+      grouped.putIfAbsent(dateKey, () => []).add(data);
     }
     
-    // 转换为列表并按日期降序排序
-    final result = grouped.entries.map((entry) {
-      return {
-        'date': entry.key,
-        'data': entry.value,
-      };
-    }).toList();
-    
-    result.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
-    
-    return result;
+    return grouped;
   }
 
-  /// 构建每天的分组卡片
-  Widget _buildDayGroupCard(BuildContext context, String date, List<HealthData> dayData) {
-    // 计算当天的统计信息
-    double? total;
-    double? average;
-    double? min;
-    double? max;
-    
-    final values = dayData
-        .where((d) => d.value != null)
-        .map((d) => d.value!)
-        .toList();
-    
-    if (values.isNotEmpty) {
-      total = values.reduce((a, b) => a + b);
-      average = total / values.length;
-      min = values.reduce((a, b) => a < b ? a : b);
-      max = values.reduce((a, b) => a > b ? a : b);
-    }
-    
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-      elevation: 3,
-      child: ExpansionTile(
-        title: Row(
-          children: [
-            Icon(Icons.calendar_today, size: 20, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 12),
-            Text(
-              date,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('记录数: ${dayData.length} 条'),
-              if (average != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '平均值: ${average.toStringAsFixed(2)} ${dayData.first.unit}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.secondary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-              if (min != null && max != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  '范围: ${min.toStringAsFixed(2)} - ${max.toStringAsFixed(2)} ${dayData.first.unit}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ],
-            ],
-          ),
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              children: dayData.asMap().entries.map((entry) {
-                final index = entry.key;
-                final data = entry.value;
-                return _buildDataCard(context, data, index);
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 构建单条数据卡片
-  Widget _buildDataCard(BuildContext context, HealthData data, int index) {
-    final time = DateTime.fromMillisecondsSinceEpoch(data.timestamp);
-    final isCompositeData = data.value == null;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      elevation: 2,
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Colors.white,
-          child: Text('${index + 1}'),
-        ),
-        title: _buildDataTitle(data, isCompositeData),
-        subtitle: _buildDataSubtitle(time, data),
-        children: [
-          _buildExpandedDetails(context, data, isCompositeData),
-        ],
-      ),
-    );
-  }
-
-  /// 构建数据标题
-  Widget _buildDataTitle(HealthData data, bool isCompositeData) {
-    if (isCompositeData) {
-      // 复合数据类型（如血压）
-      if (data.metadata.containsKey('systolic') &&
-          data.metadata.containsKey('diastolic')) {
-        return Text(
-          '${data.metadata['systolic']}/${data.metadata['diastolic']} ${data.unit}',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        );
-      } else {
-        return const Text(
-          '复合数据 (查看详情)',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        );
-      }
-    } else {
-      // 简单数值型数据
-      return Text(
-        '${data.value?.toStringAsFixed(2) ?? 'N/A'} ${data.unit}',
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
-      );
-    }
-  }
-
-  /// 构建数据副标题
-  Widget _buildDataSubtitle(DateTime time, HealthData data) {
-    // 检查是否是聚合数据
-    final isStatistics = data.metadata['queryType'] == 'statistics';
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            const Icon(Icons.access_time, size: 14, color: Colors.grey),
-            const SizedBox(width: 4),
-            Text(
-              _formatDateTime(time),
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        if (isStatistics) ...[
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              const Icon(Icons.bar_chart, size: 14, color: Colors.orange),
-              const SizedBox(width: 4),
-              Text(
-                '聚合数据 (${data.metadata['interval'] ?? 'daily'})',
-                style: const TextStyle(fontSize: 11, color: Colors.orange),
-              ),
-            ],
-          ),
-        ],
-        if (data.source != null) ...[
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              const Icon(Icons.source, size: 14, color: Colors.grey),
-              const SizedBox(width: 4),
-              Text(
-                '来源: ${data.source}',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// 构建展开的详细信息
-  Widget _buildExpandedDetails(
-    BuildContext context,
-    HealthData data,
-    bool isCompositeData,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade300),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 基本信息
-          _buildInfoSection(
-            context,
-            '基本信息',
-            Icons.info_outline,
-            [
-              _buildInfoRow('数据类型', dataType.displayName),
-              _buildInfoRow('单位', data.unit),
-              _buildInfoRow('平台', platform.displayName),
-              if (data.value != null)
-                _buildInfoRow('主值', data.value.toString()),
-              _buildInfoRow('时间戳', data.timestamp.toString()),
-            ],
-          ),
-
-          // Metadata 信息
-          if (data.metadata.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildInfoSection(
-              context,
-              'SDK 原始数据 (Metadata)',
-              Icons.code,
-              data.metadata.entries.map((entry) {
-                return _buildInfoRow(entry.key, entry.value.toString());
-              }).toList(),
-            ),
-          ],
-
-          // 如果是血压数据，显示标准化字段说明
-          if (isCompositeData &&
-              data.metadata.containsKey('systolic') &&
-              data.metadata.containsKey('diastolic'))
-            ..._buildBloodPressureInfo(context, data),
-          
-          // 如果是聚合数据，显示说明
-          if (data.metadata['queryType'] == 'statistics')
-            ..._buildStatisticsInfo(context, data),
-        ],
-      ),
-    );
-  }
-
-  /// 构建血压标准化字段说明
-  List<Widget> _buildBloodPressureInfo(BuildContext context, HealthData data) {
-    return [
-      const SizedBox(height: 16),
-      Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.blue.shade200),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.favorite, size: 16, color: Colors.blue.shade700),
-                const SizedBox(width: 8),
-                Text(
-                  '血压标准化字段',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade900,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '收缩压 (systolic): ${data.metadata['systolic']} ${data.unit}',
-              style: const TextStyle(fontSize: 12),
-            ),
-            Text(
-              '舒张压 (diastolic): ${data.metadata['diastolic']} ${data.unit}',
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '这些字段是跨平台统一的标准字段',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.blue.shade700,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ];
-  }
-  
-  /// 构建聚合数据说明
-  List<Widget> _buildStatisticsInfo(BuildContext context, HealthData data) {
-    final interval = data.metadata['interval'] ?? 'daily';
-    final aggregation = data.metadata['aggregation'];
-    
-    return [
-      const SizedBox(height: 16),
-      Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.orange.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.orange.shade200),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.bar_chart, size: 16, color: Colors.orange.shade700),
-                const SizedBox(width: 8),
-                Text(
-                  '聚合统计数据',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade900,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '统计周期: ${interval == 'daily' ? '每日' : interval}',
-              style: const TextStyle(fontSize: 12),
-            ),
-            if (aggregation != null)
-              Text(
-                '聚合方式: ${_getAggregationText(aggregation)}',
-                style: const TextStyle(fontSize: 12),
-              ),
-            const SizedBox(height: 4),
-            Text(
-              '这是按时间段统计的汇总数据，不是原始记录',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.orange.shade700,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ];
-  }
-
-  /// 构建信息区块
-  Widget _buildInfoSection(
-    BuildContext context,
-    String title,
-    IconData icon,
-    List<Widget> children,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: children,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 构建信息行
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 12,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.black54,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 获取聚合方式文本
-  String _getAggregationText(String aggregation) {
-    switch (aggregation) {
-      case 'average':
-        return '平均值';
-      case 'sum':
-        return '总和';
-      case 'minimum':
-        return '最小值';
-      case 'maximum':
-        return '最大值';
+  /// 格式化数值
+  String _formatValue(HealthData data) {
+    switch (dataType) {
+      case HealthDataType.steps:
+        return '${data.value?.toInt() ?? 0} 步';
+      case HealthDataType.glucose:
+        return '${data.value?.toStringAsFixed(1) ?? '0.0'} mmol/L';
+      case HealthDataType.bloodPressure:
+        // 血压数据存储在metadata中
+        final systolic = data.metadata['systolic'] as num?;
+        final diastolic = data.metadata['diastolic'] as num?;
+        if (systolic != null && diastolic != null) {
+          return '${systolic.toInt()}/${diastolic.toInt()} mmHg';
+        }
+        return '${data.value?.toStringAsFixed(0) ?? '0'} mmHg';
+      case HealthDataType.height:
+        return '${data.value?.toStringAsFixed(1) ?? '0.0'} cm';
+      case HealthDataType.weight:
+        return '${data.value?.toStringAsFixed(1) ?? '0.0'} kg';
       default:
-        return aggregation;
+        return data.value?.toStringAsFixed(2) ?? '0.00';
     }
   }
 
   /// 格式化日期时间
-  String _formatDateTime(DateTime time) {
-    return '${time.year}-${time.month.toString().padLeft(2, '0')}-'
-        '${time.day.toString().padLeft(2, '0')} '
-        '${time.hour.toString().padLeft(2, '0')}:'
-        '${time.minute.toString().padLeft(2, '0')}:'
-        '${time.second.toString().padLeft(2, '0')}';
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
+           '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 格式化日期
+  String _formatDate(DateTime dateTime) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final dataDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+    
+    if (dataDate == today) {
+      return '今天';
+    } else if (dataDate == yesterday) {
+      return '昨天';
+    } else {
+      return '${dateTime.month}月${dateTime.day}日';
+    }
+  }
+
+  /// 获取数据类型图标
+  IconData _getDataTypeIcon() {
+    switch (dataType) {
+      case HealthDataType.steps:
+        return CupertinoIcons.flame_fill;
+      case HealthDataType.glucose:
+        return CupertinoIcons.drop_fill;
+      case HealthDataType.bloodPressure:
+        return CupertinoIcons.heart_fill;
+      case HealthDataType.height:
+        return CupertinoIcons.arrow_up_down;
+      case HealthDataType.weight:
+        return CupertinoIcons.chart_bar_alt_fill;
+      default:
+        return CupertinoIcons.heart;
+    }
+  }
+
+  /// 获取数据类型颜色
+  Color _getDataTypeColor() {
+    switch (dataType) {
+      case HealthDataType.steps:
+        return CupertinoColors.systemOrange;
+      case HealthDataType.glucose:
+        return CupertinoColors.systemPurple;
+      case HealthDataType.bloodPressure:
+        return CupertinoColors.systemRed;
+      case HealthDataType.height:
+        return CupertinoColors.systemBlue;
+      case HealthDataType.weight:
+        return CupertinoColors.systemGreen;
+      default:
+        return CupertinoColors.systemGrey;
+    }
   }
 }
