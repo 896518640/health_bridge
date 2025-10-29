@@ -1,11 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:health_bridge/health_bridge.dart';
-import 'pages/permission_management_page.dart';
-import 'pages/data_reading_page.dart';
-import 'pages/huawei_oauth_test_page.dart';
-import 'pages/huawei_oauth_test_page_v2.dart'; // 新增：半托管模式
-import 'pages/cloud_data_reading_page.dart';
-import 'utils/constants.dart';
+import 'pages/platform_permission_page.dart';
+import 'pages/huawei_oauth_test_page_v2.dart';
 
 void main() {
   print('========================================');
@@ -19,13 +16,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Health Bridge Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
+    return CupertinoApp(
+      title: 'Health Bridge',
+      theme: const CupertinoThemeData(
+        primaryColor: CupertinoColors.systemBlue,
+        brightness: Brightness.light,
       ),
       home: const HomePage(),
+      localizationsDelegates: const [
+        DefaultCupertinoLocalizations.delegate,
+        DefaultWidgetsLocalizations.delegate,
+      ],
     );
   }
 }
@@ -40,9 +41,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String _platformVersion = '未知';
   List<HealthPlatform> _availablePlatforms = [];
-  HealthPlatform? _selectedPlatform;
   bool _isLoading = true;
-  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -50,18 +49,16 @@ class _HomePageState extends State<HomePage> {
     _initPlatform();
   }
 
-  /// 初始化平台
+  /// 初始化平台信息
   Future<void> _initPlatform() async {
-    print('>>> 开始初始化平台...');
+    print('>>> 开始获取平台信息...');
     setState(() => _isLoading = true);
 
     try {
-      print('>>> 获取平台版本...');
       final version = await HealthBridge.getPlatformVersion() ?? '未知';
-      print('>>> 平台版本: $version');
-
-      print('>>> 获取可用健康平台...');
       final platforms = await HealthBridge.getAvailableHealthPlatforms();
+      
+      print('>>> 平台版本: $version');
       print('>>> 可用平台数量: ${platforms.length}');
       for (var platform in platforms) { 
         print('    - ${platform.displayName} (${platform.key})');
@@ -72,857 +69,517 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _platformVersion = version;
         _availablePlatforms = platforms;
-        if (platforms.isNotEmpty) {
-          _selectedPlatform = platforms.first;
-          print('>>> 默认选择平台: ${platforms.first.displayName}');
-        }
       });
-      print('>>> 平台初始化完成!');
+      
+      print('>>> 平台信息获取完成!');
     } catch (e) {
-      print('!!! 初始化失败: $e');
-      _showError('初始化失败: $e');
+      print('!!! 获取平台信息失败: $e');
+      _showError('获取平台信息失败: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  /// 初始化健康平台
-  Future<void> _initializeHealthPlatform() async {
-    if (_selectedPlatform == null) return;
-
-    print('>>> 开始初始化健康平台: ${_selectedPlatform!.displayName}');
-    setState(() => _isLoading = true);
-
-    try {
-      // 根据平台选择对应的测试数据类型
-      List<HealthDataType> dataTypes;
-      List<HealthDataOperation> operations;
-
-      switch (_selectedPlatform!) {
-        case HealthPlatform.appleHealth:
-          dataTypes = appleHealthTestTypes;
-          operations = [HealthDataOperation.read, HealthDataOperation.write];
-          print('>>> 使用 Apple Health 测试数据类型: ${dataTypes.map((t) => t.displayName).join(", ")}');
-          break;
-        case HealthPlatform.huaweiHealth:
-        case HealthPlatform.huaweiCloud:
-          dataTypes = huaweiTestTypes;
-          operations = [HealthDataOperation.read]; // 华为健康只支持读取
-          print('>>> 使用华为健康测试数据类型: ${dataTypes.map((t) => t.displayName).join(", ")}');
-          break;
-        default:
-          dataTypes = [];
-          operations = [HealthDataOperation.read];
-      }
-
-      // 使用自定义数据类型初始化（新 API）
-      final result = await HealthBridge.initializeHealthPlatform(
-        _selectedPlatform!,
-        dataTypes: dataTypes,
-        operations: operations,
-      );
-
-      print('>>> 初始化结果: ${result.status}');
-      print('>>> 消息: ${result.message}');
-
-      if (!mounted) return;
-
-      if (result.isSuccess) {
-        setState(() => _isInitialized = true);
-        print('>>> ✓ ${_selectedPlatform!.displayName} 初始化成功!');
-        _showSuccess('${_selectedPlatform!.displayName} 初始化成功\n已授权 ${dataTypes.length} 种数据类型');
-      } else {
-        print('!!! 初始化失败: ${result.message}');
-        _showError('初始化失败: ${result.message}');
-      }
-    } catch (e) {
-      print('!!! 初始化异常: $e');
-      _showError('初始化异常: $e');
-    } finally {
-      setState(() => _isLoading = false);
+  /// 打开平台权限页面（优化：先授权再进入）
+  void _openPlatformPermission(HealthPlatform platform) async {
+    // 对于 Apple Health，先在主页面完成授权，再进入权限管理页
+    if (platform == HealthPlatform.appleHealth) {
+      await _initializeAppleHealth(platform);
+    } else {
+      // 其他平台直接进入
+      _navigateToPlatformPermissionPage(platform);
     }
   }
 
-  /// 断开连接
-  Future<void> _disconnect() async {
-    final confirmed = await showDialog<bool>(
+  /// 初始化 Apple Health（在主页面完成授权）
+  Future<void> _initializeAppleHealth(HealthPlatform platform) async {
+    // 显示加载对话框
+    showCupertinoDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('断开连接'),
-        content: Text(
-          '确定要断开 ${_selectedPlatform?.displayName} 的连接吗？\n\n'
-          '注意：这只是断开应用内的连接，不会取消系统授权。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('确定'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      await HealthBridge.disconnect();
-
-      if (!mounted) return;
-
-      setState(() => _isInitialized = false);
-      _showSuccess('已断开连接');
-    } catch (e) {
-      _showError('断开连接失败: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  /// 验证读取权限（仅 Apple Health）
-  Future<void> _verifyReadPermissions() async {
-    if (_selectedPlatform != HealthPlatform.appleHealth) {
-      _showError('仅 Apple Health 支持权限验证');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      // 获取当前请求的数据类型
-      final dataTypes = appleHealthTestTypes;
-      
-      print('>>> 开始验证 ${dataTypes.length} 个数据类型的读取权限...');
-      print('>>> 数据类型列表: ${dataTypes.map((t) => t.key).join(", ")}');
-      
-      // 使用统一的 checkPermissions API（读取权限）
-      final permissions = await HealthBridge.checkPermissions(
-        platform: HealthPlatform.appleHealth,
-        dataTypes: dataTypes,
-        operation: HealthDataOperation.read,  // ✅ 使用枚举，不是字符串
-      );
-      
-      // checkPermissions 返回 Map<HealthDataType, HealthPermissionStatus>
-      // 需要转换成 Map<String, String> 用于展示
-      final permissionsMap = permissions.map(
-        (key, value) => MapEntry(key.key, value.name),
-      );
-      
-      print('>>> 权限验证结果: $permissionsMap');
-      print('>>> 返回的数据类型数量: ${permissionsMap.length}');
-      
-      // 分类统计
-      final granted = <String>[];
-      final denied = <String>[];
-      final notDetermined = <String>[];
-      
-      permissionsMap.forEach((key, value) {
-        switch (value) {
-          case 'granted':
-            granted.add(key);
-            break;
-          case 'denied':
-            denied.add(key);
-            break;
-          case 'not_determined':
-          default:
-            notDetermined.add(key);
-        }
-      });
-      
-      if (!mounted) return;
-      
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.verified_user, color: Colors.blue),
-              const SizedBox(width: 8),
-              const Text('权限验证结果'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (granted.isNotEmpty) ...[
-                  Text(
-                    '✅ 已授权 (${granted.length})',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                  ...granted.map((key) => 
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16, top: 4),
-                      child: Text('• $key'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (denied.isNotEmpty) ...[
-                  Text(
-                    '❌ 权限被拒绝 (${denied.length})',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
-                  ...denied.map((key) => 
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16, top: 4),
-                      child: Text('• $key'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (notDetermined.isNotEmpty) ...[
-                  Text(
-                    '⚠️ 未确定 (${notDetermined.length})',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                    ),
-                  ),
-                  ...notDetermined.map((key) => 
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16, top: 4),
-                      child: Text('• $key'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                const Divider(),
-                const Text(
-                  '💡 注意：',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  '⚠️ Apple 隐私限制说明：\n'
-                  '• "已授权"：查询到数据，肯定有权限 ✅\n'
-                  '• "未确定"：无数据，可能是拒绝或真的没数据 ⚠️\n'
-                  '• 即使拒绝权限，查询也不报错（隐私保护）\n'
-                  '• 建议：有数据的才算已授权，无数据的无法判断\n'
-                  '• 查询范围：最近90天',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            if (denied.isNotEmpty)
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // TODO: 打开系统设置
-                },
-                icon: const Icon(Icons.settings),
-                label: const Text('去设置'),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('确定'),
-            ),
+      barrierDismissible: false,
+      builder: (context) => const CupertinoAlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CupertinoActivityIndicator(radius: 14),
+            SizedBox(height: 16),
+            Text('正在请求授权...'),
           ],
         ),
+      ),
+    );
+
+    try {
+      // 定义需要授权的数据类型
+      final dataTypes = [
+        HealthDataType.steps,
+        HealthDataType.glucose,
+        HealthDataType.bloodPressure,
+        HealthDataType.height,
+        HealthDataType.weight,
+      ];
+
+      print('>>> 开始初始化 Apple Health');
+      print('>>> 数据类型: ${dataTypes.map((t) => t.displayName).join(", ")}');
+
+      // 初始化并请求授权
+      final result = await HealthBridge.initializeHealthPlatform(
+        platform,
+        dataTypes: dataTypes,
+        operations: [HealthDataOperation.read],
       );
+
+      // 关闭加载对话框
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      if (result.isSuccess) {
+        print('>>> Apple Health 初始化成功');
+        
+        // 延迟一下，让用户完成系统授权弹窗
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        // 进入权限管理页面
+        _navigateToPlatformPermissionPage(platform);
+      } else {
+        print('!!! 初始化失败: ${result.message}');
+        _showError('初始化失败: ${result.message ?? "未知错误"}');
+      }
     } catch (e) {
-      print('!!! 权限验证异常: $e');
-      _showError('权限验证失败: $e');
-    } finally {
-      setState(() => _isLoading = false);
+      // 关闭加载对话框
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      print('!!! 初始化异常: $e');
+      _showError('初始化异常: $e');
     }
   }
 
-  /// 打开权限管理页面
-  void _openPermissionManagement() {
-    if (_selectedPlatform == null) {
-      _showError('请先选择平台');
-      return;
-    }
-
-    if (!_isInitialized) {
-      _showError('请先初始化平台');
-      return;
-    }
-
+  /// 跳转到平台权限页面
+  void _navigateToPlatformPermissionPage(HealthPlatform platform) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => PermissionManagementPage(
-          platform: _selectedPlatform!,
+      CupertinoPageRoute(
+        builder: (context) => PlatformPermissionPage(
+          platform: platform,
+          skipInitialization: platform == HealthPlatform.appleHealth, // Apple Health 已在主页面初始化
         ),
       ),
     );
   }
 
-  /// 打开数据读取页面
-  void _openDataReading() {
-    if (_selectedPlatform == null) {
-      _showError('请先选择平台');
-      return;
-    }
-
-    if (!_isInitialized) {
-      _showError('请先初始化平台');
-      return;
-    }
-
+  /// 打开华为OAuth授权页面
+  void _openHuaweiOAuth() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => DataReadingPage(
-          platform: _selectedPlatform!,
-        ),
+        builder: (context) => const HuaweiOAuthTestPageV2(),
       ),
-    );
-  }
-
-  void _showSuccess(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
     );
   }
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('错误'),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Health Bridge Demo'),
-        elevation: 2,
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('健康数据'),
+        backgroundColor: CupertinoColors.systemBackground,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: SafeArea(
+        child: _isLoading
+            ? const Center(
+                child: CupertinoActivityIndicator(radius: 14),
+              )
+            : CustomScrollView(
+                slivers: [
+                  // 平台信息
+                  SliverToBoxAdapter(
+                    child: _buildPlatformInfoSection(),
+                  ),
+                  
+                  // 可用平台列表
+                  SliverToBoxAdapter(
+                    child: _buildPlatformListSection(),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// 平台信息区域
+  Widget _buildPlatformInfoSection() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              CupertinoColors.systemBlue.withOpacity(0.1),
+              CupertinoColors.systemPurple.withOpacity(0.1),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: CupertinoColors.systemGrey5,
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.systemBlue.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.device_phone_portrait,
+                    color: CupertinoColors.systemBlue,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '设备信息',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _platformVersion,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: CupertinoColors.secondaryLabel,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: CupertinoColors.white,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
                 children: [
-                  // 平台信息卡片
-                  Card(
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '平台信息',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                            ],
-                          ),
-                          const Divider(),
-                          const SizedBox(height: 8),
-                          _buildInfoRow('系统版本', _platformVersion),
-                          _buildInfoRow(
-                            '可用平台',
-                            _availablePlatforms.isEmpty
-                                ? '无'
-                                : _availablePlatforms
-                                    .map((p) => p.displayName)
-                                    .join(', '),
-                          ),
-                          if (_selectedPlatform != null)
-                            _buildInfoRow(
-                              '当前平台',
-                              _selectedPlatform!.displayName,
-                            ),
-                          _buildInfoRow(
-                            '状态',
-                            _isInitialized ? '已初始化' : '未初始化',
-                          ),
-                        ],
-                      ),
-                    ),
+                  const Icon(
+                    CupertinoIcons.checkmark_seal_fill,
+                    color: CupertinoColors.systemGreen,
+                    size: 20,
                   ),
-                  const SizedBox(height: 16),
-
-                  // 平台初始化卡片
-                  Card(
-                    color: _isInitialized
-                        ? Colors.green.shade50
-                        : Colors.orange.shade50,
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                _isInitialized
-                                    ? Icons.check_circle
-                                    : Icons.warning_amber,
-                                color: _isInitialized
-                                    ? Colors.green.shade700
-                                    : Colors.orange.shade700,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _isInitialized ? '平台已初始化' : '平台未初始化',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: _isInitialized
-                                      ? Colors.green.shade900
-                                      : Colors.orange.shade900,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          if (!_isInitialized)
-                            const Text(
-                              '请先初始化平台，才能使用权限管理和数据读取功能',
-                              style: TextStyle(fontSize: 12),
-                            )
-                          else
-                            const Text(
-                              '平台已就绪，可以进行权限管理和数据读取',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                          const SizedBox(height: 16),
-                          if (!_isInitialized)
-                            ElevatedButton.icon(
-                              onPressed: _selectedPlatform == null
-                                  ? null
-                                  : _initializeHealthPlatform,
-                              icon: const Icon(Icons.power_settings_new),
-                              label: const Text('初始化平台'),
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(48),
-                              ),
-                            )
-                          else
-                            ElevatedButton.icon(
-                              onPressed: _disconnect,
-                              icon: const Icon(Icons.power_off),
-                              label: const Text('断开连接'),
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(48),
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 📱 端侧功能
-                  Row(
-                    children: [
-                      Icon(Icons.phone_android, color: Colors.blue.shade700),
-                      const SizedBox(width: 8),
-                      Text(
-                        '📱 端侧功能',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '直接读取设备本地健康数据',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 权限管理
-                  Card(
-                    elevation: 2,
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.security,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                      title: const Text(
-                        '权限管理',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        '管理步数、血糖、血压的读写权限\n支持授权和查看取消授权指引',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                      onTap: _openPermissionManagement,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 验证读取权限 (仅 Apple Health)
-                  if (_selectedPlatform == HealthPlatform.appleHealth) ...[
-                    Card(
-                      elevation: 2,
-                      child: ListTile(
-                        leading: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade100,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            Icons.verified_user,
-                            color: Colors.green.shade700,
-                          ),
-                        ),
-                        title: const Text(
-                          '验证读取权限',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          '查看哪些数据类型已授权（仅iOS）\n'
-                          '⚠️ 限制：只能验证"有数据"的权限',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        trailing: const Icon(Icons.arrow_forward_ios),
-                        onTap: _isInitialized ? _verifyReadPermissions : null,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // 数据读取
-                  Card(
-                    elevation: 2,
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.download,
-                          color: Colors.green.shade700,
-                        ),
-                      ),
-                      title: const Text(
-                        '数据读取',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        '读取步数、血糖、血压的今日数据\n点击可查看详细数据列表',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                      onTap: _openDataReading,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ☁️ 云侧功能
-                  Row(
-                    children: [
-                      Icon(Icons.cloud, color: Colors.orange.shade700),
-                      const SizedBox(width: 8),
-                      Text(
-                        '☁️ 云侧功能',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.orange.shade700,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade300),
-                        ),
-                        child: Text(
-                          '仅华为',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.orange.shade900,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '通过华为账号授权，读取云端健康数据',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // OAuth 授权测试（新版 - 半托管模式）
-                  Card(
-                    elevation: 2,
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.purple.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.login,
-                          color: Colors.purple.shade700,
-                        ),
-                      ),
-                      title: Row(
-                        children: [
-                          const Text(
-                            'OAuth 授权管理',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.purple.shade100,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.purple.shade300),
-                            ),
-                            child: Text(
-                              'V2 半托管',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Colors.purple.shade900,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      subtitle: const Text(
-                        '华为帐号 OAuth 授权（推荐）\n使用 HuaweiOAuthHelper 半托管模式 + 授权管理',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const HuaweiOAuthTestPageV2(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // OAuth 授权测试（旧版 - 仅供对比）
-                  Card(
-                    elevation: 1,
-                    color: Colors.grey.shade50,
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.login,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      title: Row(
-                        children: [
-                          Text(
-                            'OAuth 授权（旧版）',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.grey.shade400),
-                            ),
-                            child: Text(
-                              '完全手动',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      subtitle: Text(
-                        '仅供代码对比参考',
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                      ),
-                      trailing: Icon(Icons.arrow_forward_ios, color: Colors.grey.shade400),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const HuaweiOAuthTestPage(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 云侧数据读取
-                  Card(
-                    elevation: 2,
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.purple.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.cloud_download,
-                          color: Colors.purple.shade700,
-                        ),
-                      ),
-                      title: const Text(
-                        '云侧数据读取',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        '读取华为云端健康数据（需先授权）',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const CloudDataReadingPage(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 使用说明
-                  Card(
-                    color: Colors.grey.shade100,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.help_outline,
-                                  color: Colors.grey.shade700),
-                              const SizedBox(width: 8),
-                              Text(
-                                '使用说明',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey.shade900,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            '1. 首先点击"初始化平台"按钮\n'
-                            '2. 进入"权限管理"申请所需数据类型的权限\n'
-                            '3. 进入"数据读取"读取健康数据\n'
-                            '4. 点击数据卡片可查看详细信息',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _availablePlatforms.isEmpty
+                          ? '暂无可用平台'
+                          : '可用: ${_availablePlatforms.map((p) => p.displayName).join('、')}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
+  /// 可用平台列表
+  Widget _buildPlatformListSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 端侧健康平台
+        if (_availablePlatforms.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              '健康平台',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: CupertinoColors.secondaryLabel.resolveFrom(context),
+              ),
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.black87),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: _availablePlatforms
+                  .map((platform) => _buildPlatformTile(platform))
+                  .toList(),
+            ),
+          ),
+        ] else
+          _buildEmptyPlatformSection(),
+
+        // 华为云侧OAuth入口
+        _buildHuaweiCloudSection(),
+        
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  /// 空平台提示
+  Widget _buildEmptyPlatformSection() {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              CupertinoIcons.info_circle,
+              size: 48,
+              color: CupertinoColors.secondaryLabel.resolveFrom(context),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '当前设备没有可用的健康平台',
+              style: TextStyle(
+                fontSize: 15,
+                color: CupertinoColors.secondaryLabel.resolveFrom(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 平台列表项
+  Widget _buildPlatformTile(HealthPlatform platform) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _getPlatformColor(platform).withOpacity(0.08),
+            _getPlatformColor(platform).withOpacity(0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _getPlatformColor(platform).withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: CupertinoListTile(
+        leading: Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: CupertinoColors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: _getPlatformColor(platform).withOpacity(0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            _getPlatformIcon(platform),
+            color: _getPlatformColor(platform),
+            size: 28,
+          ),
+        ),
+        title: Text(
+          platform.displayName,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          _getPlatformDescription(platform),
+          style: const TextStyle(
+            fontSize: 13,
+            color: CupertinoColors.secondaryLabel,
+          ),
+        ),
+        trailing: const CupertinoListTileChevron(),
+        onTap: () => _openPlatformPermission(platform),
+      ),
+    );
+  }
+
+  /// 华为云侧功能区
+  Widget _buildHuaweiCloudSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 12),
+            child: Row(
+              children: [
+                const Text(
+                  '云侧功能',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: CupertinoColors.secondaryLabel,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        CupertinoColors.systemOrange.withOpacity(0.8),
+                        CupertinoColors.systemOrange.withOpacity(0.6),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    '仅华为',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: CupertinoColors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  CupertinoColors.systemPurple.withOpacity(0.08),
+                  CupertinoColors.systemIndigo.withOpacity(0.08),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: CupertinoColors.systemPurple.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: CupertinoListTile(
+              leading: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: CupertinoColors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: CupertinoColors.systemPurple.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  CupertinoIcons.cloud,
+                  color: CupertinoColors.systemPurple,
+                  size: 28,
+                ),
+              ),
+              title: const Text(
+                'OAuth 授权管理',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: const Text(
+                '华为帐号授权 + 云端数据读取',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: CupertinoColors.secondaryLabel,
+                ),
+              ),
+              trailing: const CupertinoListTileChevron(),
+              onTap: _openHuaweiOAuth,
             ),
           ),
         ],
       ),
     );
+  }
+
+  IconData _getPlatformIcon(HealthPlatform platform) {
+    switch (platform) {
+      case HealthPlatform.appleHealth:
+        return CupertinoIcons.heart_fill;
+      case HealthPlatform.huaweiHealth:
+        return CupertinoIcons.heart_circle_fill;
+      default:
+        return CupertinoIcons.heart;
+    }
+  }
+
+  Color _getPlatformColor(HealthPlatform platform) {
+    switch (platform) {
+      case HealthPlatform.appleHealth:
+        return CupertinoColors.systemRed;
+      case HealthPlatform.huaweiHealth:
+        return CupertinoColors.systemOrange;
+      default:
+        return CupertinoColors.systemBlue;
+    }
+  }
+
+  String _getPlatformDescription(HealthPlatform platform) {
+    switch (platform) {
+      case HealthPlatform.appleHealth:
+        return '步数、血糖、血压、身高、体重';
+      case HealthPlatform.huaweiHealth:
+        return '步数、血糖、血压';
+      default:
+        return '健康数据管理';
+    }
   }
 }
